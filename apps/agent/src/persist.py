@@ -15,7 +15,6 @@ import asyncpg
 
 from .upload import storage_key
 
-
 # A demo patient gets seeded on every fresh run if none exists — see
 # scripts/seed.sh for the full set. This is the fallback so a clean DB
 # doesn't blow up.
@@ -218,6 +217,13 @@ async def fetch_run_detail(pool: asyncpg.Pool, run_id: str) -> dict | None:
         "scan": dict(scan) if scan else None,
         "created_at": pa["created_at"].isoformat(),
     }
+
+
+async def fetch_run_status(pool: asyncpg.Pool, run_id: str) -> str | None:
+    """The run's current status, or None if the run doesn't exist. Used by the
+    SSE tailer (ticket 0028) to know when to stop streaming."""
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT status FROM prior_auths WHERE id = $1", run_id)
 
 
 async def poll_events_since(

@@ -8,6 +8,7 @@ import {
   TIGRIS_BUCKET,
   uploadToTigris,
 } from "./client";
+import { log } from "../logging";
 
 export type TigrisFileRef = { key: string; url: string };
 
@@ -98,7 +99,7 @@ export async function persistRunArtifacts(
     });
     if (receipt) artifacts.receipt = receipt;
   } catch (err) {
-    console.error("[tigris] receipt upload failed:", err);
+    log.error("tigris.receipt_upload_failed", { error: err instanceof Error ? err.message : String(err) });
   }
 
   let insforge_updated = false;
@@ -120,9 +121,9 @@ export async function persistRunArtifacts(
         },
       ]);
       insforge_updated = !error;
-      if (error) console.error("[insforge] prior_auths upsert:", error.message);
+      if (error) log.error("insforge.prior_auths_upsert_failed", { error: error.message });
     } catch (err) {
-      console.error("[insforge] persist failed:", err);
+      log.error("insforge.persist_failed", { error: err instanceof Error ? err.message : String(err) });
     }
   }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSubmission } from "@/lib/submissions";
+import { to503 } from "@/lib/persistence-response";
 
 /**
  * PUBLIC by design — this backs the HealthFirst payer-portal confirmation
@@ -17,7 +18,12 @@ export async function GET(
   { params }: { params: Promise<{ ref: string }> }
 ) {
   const { ref } = await params;
-  const submission = await getSubmission(ref);
+  let submission;
+  try {
+    submission = await getSubmission(ref);
+  } catch (err) {
+    return to503(err);
+  }
 
   if (!submission) {
     return NextResponse.json({ error: "Reference ID not found" }, { status: 404 });

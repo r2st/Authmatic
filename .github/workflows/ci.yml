@@ -8,14 +8,11 @@ on:
 jobs:
   web:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/web
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -23,16 +20,16 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install
         run: pnpm install --frozen-lockfile
-        working-directory: .
       - name: Typecheck
-        run: pnpm --filter web typecheck
-        working-directory: .
+        run: pnpm --filter authmatic-web typecheck
       - name: Lint
-        run: pnpm --filter web lint
-        working-directory: .
+        run: pnpm --filter authmatic-web lint
+      - name: Test
+        run: pnpm --filter authmatic-web test
       - name: Build
-        run: pnpm --filter web build
-        working-directory: .
+        run: pnpm --filter authmatic-web build
+      - name: Dependency audit (non-blocking)
+        run: pnpm audit --prod || true
 
   agent:
     runs-on: ubuntu-latest
@@ -45,13 +42,22 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install
-        run: pip install -r requirements.txt && pip install ruff mypy pytest pytest-asyncio
+        run: pip install -r requirements.txt -e ".[dev]"
       - name: Ruff
         run: ruff check .
-      - name: Mypy
-        run: mypy . || true   # TODO: drop `|| true` once 0010 lands type coverage
+      - name: Mypy (baseline — typed modules)
+        run: mypy src || true   # lenient baseline (ticket 0032); tighten incrementally
       - name: Pytest
-        run: pytest -q || true # TODO: drop `|| true` once 0010 lands tests
+        run: pytest -q
+      - name: Dependency audit (non-blocking)
+        run: pip install pip-audit && pip-audit || true
+
+  migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint migrations
+        run: bash scripts/lint-migrations.sh
 
   secret-scan:
     runs-on: ubuntu-latest

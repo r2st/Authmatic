@@ -11,6 +11,7 @@
  * session exists, `actor_id` is null (system/agent action).
  */
 import { getInsForgeAdmin, isInsForgeConfigured } from "./insforge/admin";
+import { log } from "./logging";
 
 export type AuditAction =
   | "read"
@@ -48,14 +49,10 @@ export async function auditLog(entry: AuditEntry): Promise<void> {
     ]);
   } catch (err) {
     // Surface the gap without leaking PHI; never throw into the request path.
-    console.error(
-      JSON.stringify({
-        level: "error",
-        event: "audit.write_failed",
-        resource: entry.resource,
-        action: entry.action,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    );
+    log.error("audit.write_failed", {
+      resource: entry.resource,
+      action: entry.action,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }

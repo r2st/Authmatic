@@ -82,3 +82,9 @@ back-office/scoped client split (ADR 0007). Enforcement today is the
 0005 app-layer ownership layer; flipping RLS to the live enforced path
 needs the InsForge JWT/GUC wiring described in ADR 0007 (tracked
 follow-up). Manual clinic filtering kept until then — not removed.
+
+**Follow-up (filed 2026-06-03):** [[0034]] wires the scoped client so RLS
+actually enforces at runtime; [[0035]] applies + verifies migrations
+0004–0009 (incl. 0007's policies) against the live DB. Until both land,
+tenant isolation is app-layer-only — review every new query for the
+clinic filter.

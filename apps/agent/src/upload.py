@@ -24,7 +24,9 @@ _PDF_MAGIC = b"%PDF-"
 # prescription PDF never needs these, so their presence is a strong signal of
 # a weaponized file — reject (ticket 0013). This is a cheap structural check,
 # not a substitute for AV scanning (see ADR 0010).
-_ACTIVE_CONTENT_MARKERS = (b"/JavaScript", b"/JS", b"/OpenAction", b"/AA", b"/Launch", b"/EmbeddedFile")
+_ACTIVE_CONTENT_MARKERS = (
+    b"/JavaScript", b"/JS", b"/OpenAction", b"/AA", b"/Launch", b"/EmbeddedFile",
+)
 
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]")
 

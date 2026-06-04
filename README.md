@@ -8,7 +8,7 @@ Autonomous agent that files prior authorizations on real payer portals in under
 ```
 .
 ├── apps/
-│   ├── web/                Next.js 14 UI (clinic dashboard, portal, run viewer)
+│   ├── web/                Next.js 15 UI (clinic dashboard, portal, run viewer)
 │   └── agent/              FastAPI agent service (READ-WEB → EXTRACT → SUBMIT → PERSIST)
 ├── packages/
 │   └── shared/             Shared TS types (placeholder)
@@ -40,7 +40,7 @@ make dev                               # web on :3000, agent on :8000
 
 ## Stack
 
-- **Frontend:** Next.js 14 (App Router), TypeScript, Tailwind
+- **Frontend:** Next.js 15 (App Router), React 19, TypeScript, Tailwind
 - **Agent:** Python 3.12, FastAPI, SSE for live streaming
 - **Backend:** InsForge (Postgres + Storage + Auth + Edge Functions)
 - **Browser automation:** Rtrvr.ai
@@ -50,16 +50,37 @@ make dev                               # web on :3000, agent on :8000
 
 ## Database
 
-Migrations live in `db/migrations/`. Apply with:
+Migrations live in `db/migrations/` (numbered `NNNN_name.sql`). They are
+applied by a tracked runner — never by hand — so dev/staging/prod don't
+drift. See [ADR 0006](docs/decisions/0006-migration-tool.md) for the choice.
 
 ```bash
-psql "$INSFORGE_DB_URL" -f db/migrations/0001_baseline.sql
-psql "$INSFORGE_DB_URL" -f db/migrations/0002_add_pa_submissions.sql
-psql "$INSFORGE_DB_URL" -f db/migrations/0003_add_pa_submissions_review_cols.sql
+make migrate          # apply all pending migrations (requires $INSFORGE_DB_URL)
+make migrate-status   # show applied ✔ vs pending ✗
 ```
 
-For sustained development, wire these into a migration tool (Atlas, sqlx,
-golang-migrate, or InsForge's own CLI).
+The runner (`scripts/migrate.sh`) records applied versions in a
+`schema_migrations` table and applies each pending file in a transaction.
+Add a migration by dropping a new `db/migrations/NNNN_name.sql` (continue the
+numbering); never edit an applied one. In CI, the deploy job runs `make
+migrate` before starting the app (see ADR 0006 + ticket 0009).
+
+## Dependencies & reproducibility
+
+- **Policy (ticket 0033):** caret ranges in `package.json` + a **committed
+  `pnpm-lock.yaml`**; CI installs with `--frozen-lockfile` ([[0009]]) so every
+  build resolves identically. The lockfile — not the range — is the
+  reproducibility guarantee. The actual stack is **Next.js 15 / React 19**
+  (the "14" in older docs was stale; intentionally on 15/19).
+- **Agent:** `apps/agent/requirements.txt` uses bounded ranges
+  (`>=x,<y`). A pinned lockfile (`pip-tools`/`uv`) is a recommended
+  follow-up for byte-identical Python installs.
+- **Security audit (triaged 2026-06-03):** a root `pnpm.overrides` forces
+  `protobufjs >= 8.2.0`, clearing 8 advisories that came transitively
+  through `@daytonaio/sdk`'s OpenTelemetry chain. One **moderate** remains
+  — `postcss < 8.5.10`, bundled by Next.js, a build-time CSS tool fed only
+  first-party CSS; accepted as low-risk pending a Next bump. Re-run with
+  `pnpm audit --prod`.
 
 ## Documentation
 

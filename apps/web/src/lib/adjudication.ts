@@ -1,5 +1,19 @@
+/**
+ * HealthFirst MOCK-PAYER adjudication (ticket 0030, ADR 0015 decision (a)).
+ *
+ * This is the simulated *payer's* medical-review engine — reached ONLY via the
+ * public `/api/pa/[ref]/adjudicate` route (the mock portal). The real agent run
+ * never calls `evaluateSubmission`; it reports "submitted / pending payer
+ * review" and fabricates no decision. The reviewer ids below are mock-payer
+ * constants and must not appear on a real submission.
+ */
 import type { AdjudicationResult, PaFormPayload, PaStatus } from "./pa-types";
 import { getSubmission, updateSubmission } from "./submissions";
+import { auditLog } from "./audit";
+
+// Mock-payer reviewer identities — belong ONLY to this simulation (ticket 0030).
+const MOCK_PAYER_REVIEWER = "HF-MCR-8842";
+const MOCK_PAYER_REVIEWER_FALLBACK = "HF-REV-DEMO";
 
 const STEP_THERAPY_KEYWORDS = [
   "first-line",
@@ -132,14 +146,14 @@ export async function adjudicateReference(
       status: submission.status,
       decision_notes: submission.decision_notes ?? "",
       denial_reason: submission.denial_reason,
-      reviewer_id: submission.reviewer_id ?? "HF-REV-DEMO",
+      reviewer_id: submission.reviewer_id ?? MOCK_PAYER_REVIEWER_FALLBACK,
     };
   }
 
   await updateSubmission(reference_id, {
     status: "under_review",
     under_review_at: new Date().toISOString(),
-    reviewer_id: "HF-MCR-8842",
+    reviewer_id: MOCK_PAYER_REVIEWER,
   });
 
   if (reviewDelayMs > 0) {
@@ -154,7 +168,18 @@ export async function adjudicateReference(
     decided_at,
     decision_notes: evaluation.decision_notes,
     denial_reason: evaluation.denial_reason,
-    reviewer_id: "HF-MCR-8842",
+    reviewer_id: MOCK_PAYER_REVIEWER,
+  });
+
+  // No approved/denied transition without a recorded, auditable basis
+  // (ticket 0030 + ADR 0008 audit log). `detail` carries only the decision +
+  // mock reviewer, never raw PHI.
+  void auditLog({
+    action: "adjudicate",
+    resource: "pa_submission",
+    resource_id: reference_id,
+    actor_id: MOCK_PAYER_REVIEWER,
+    detail: { status: evaluation.status, reviewer: MOCK_PAYER_REVIEWER },
   });
 
   return {
@@ -162,6 +187,6 @@ export async function adjudicateReference(
     status: evaluation.status,
     decision_notes: evaluation.decision_notes,
     denial_reason: evaluation.denial_reason,
-    reviewer_id: "HF-MCR-8842",
+    reviewer_id: MOCK_PAYER_REVIEWER,
   };
 }

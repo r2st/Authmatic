@@ -47,7 +47,7 @@ contributor working in the repo — read it before doing anything.
 
 ## Stack snapshot
 
-- **Web:** Next.js 14 App Router, TypeScript, Tailwind, hosted on Render
+- **Web:** Next.js 15 App Router, React 19, TypeScript, Tailwind, hosted on Render
 - **Agent:** Python 3.12, FastAPI, SSE streaming, hosted on Render
 - **Backend:** InsForge (Postgres + Storage + Auth + Edge Functions)
 - **Browser automation:** Rtrvr.ai

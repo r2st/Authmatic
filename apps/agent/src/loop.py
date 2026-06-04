@@ -10,7 +10,6 @@ on the payer portal.
 from __future__ import annotations
 
 import logging
-import os
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -98,6 +97,24 @@ async def run_agent(
                 # Snapshot the identity fields once, from the trusted parse.
                 if frozen_identity is None:
                     frozen_identity = _identity(parsed)
+                # Stop-and-ask, never proceed with placeholder identity
+                # (ticket 0029). If extraction can't confidently identify the
+                # patient + drug from the REAL document, the run halts for human
+                # review rather than filing a wrong-patient PA.
+                missing = _missing_identity(parsed)
+                if missing:
+                    elapsed = int((time.perf_counter() - t0) * 1000)
+                    ev = await append_event(
+                        pool, run_id, step_no, verb, plan["plan"], args,
+                        {"needs_review": True, "missing_fields": missing}, elapsed,
+                    )
+                    await on_event(ev)
+                    await update_status(pool=pool, pa_id=run_id, status="error")
+                    _logger.warning(
+                        "run.needs_review",
+                        extra={"run_id": run_id, "missing": ",".join(missing)},
+                    )
+                    return
             elif verb == "READ-WEB":
                 # Resolve the patient's actual plan from the parsed member_id
                 # so we look up the right payer's rules (Ozempic on
@@ -244,6 +261,16 @@ _IDENTITY_FIELDS = ("member_id", "drug_ndc", "icd10")
 def _identity(parsed: dict) -> dict:
     """The frozen-from-EXECUTE identity fields, for compare-and-fail."""
     return {k: parsed.get(k) for k in _IDENTITY_FIELDS}
+
+
+#: Fields that MUST be present after extraction for a run to proceed. Missing
+#: any of these means we can't trust who/what we'd be filing for (ticket 0029).
+_REQUIRED_FOR_SUBMIT = ("member_id", "drug_name")
+
+
+def _missing_identity(parsed: dict) -> list[str]:
+    """Return the required identity fields that extraction failed to produce."""
+    return [k for k in _REQUIRED_FOR_SUBMIT if not str(parsed.get(k) or "").strip()]
 
 
 def _safe_for_history(tool_output) -> dict | str:

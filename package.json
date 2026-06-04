@@ -17,6 +17,11 @@
   "devDependencies": {
     "concurrently": "^9.0.0"
   },
+  "pnpm": {
+    "overrides": {
+      "protobufjs@>=8.0.0 <8.2.0": ">=8.2.0"
+    }
+  },
   "engines": {
     "node": ">=20",
     "pnpm": ">=9"

@@ -11,6 +11,7 @@
  * See: docs/decisions/0013-canonical-agent.md
  */
 import { adjudicateReference } from "./adjudication";
+import { IS_PRODUCTION } from "./insforge/admin";
 import {
   appendStep,
   createRun,
@@ -41,22 +42,22 @@ function baseUrl() {
   return "http://localhost:3000";
 }
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
+// Theatrical `sleep()` pacing removed (ticket 0026): steps emit as soon as the
+// underlying work completes; `duration_ms` reflects real work, not a fixed
+// delay. Any progressive-disclosure animation belongs on the client (CSS/React
+// transitions on SSE events), not the server path. The trailing `_minMs` arg is
+// accepted-and-ignored so existing call sites compile during the migration to
+// the canonical Python agent (ticket 0025); it no longer pauses anything.
 async function emitStep(
   runId: string,
   step: Omit<AgentStep, "status"> & { status?: AgentStep["status"] },
   onEvent: (data: Record<string, unknown>) => void,
-  minMs = 1200
+  _minMs = 0
 ) {
   const started = Date.now();
   const full: AgentStep = { ...step, status: step.status ?? "running" };
   appendStep(runId, full);
   onEvent({ type: "step", step: full, run: getRun(runId) });
-
-  await sleep(minMs);
 
   const duration_ms = Date.now() - started;
   updateStep(runId, step.step_no, { status: "done", duration_ms });
@@ -77,6 +78,17 @@ export async function runAgentPipeline(
   onEvent: (data: Record<string, unknown>) => void,
   options?: { caseId?: DemoCaseId }
 ) {
+  // This is the SCRIPTED demo pipeline, not the canonical agent (ADR 0013).
+  // It must never run in production: the real path proxies to the Python
+  // agent (USE_PYTHON_AGENT, ticket 0025). Fail loud rather than silently
+  // file a PA via demo theater (ticket 0029 / 0019).
+  if (IS_PRODUCTION) {
+    throw new Error(
+      "Scripted agent-orchestrator is demo-only and is disabled in production. " +
+        "Set USE_PYTHON_AGENT=true to route runs to the canonical Python agent."
+    );
+  }
+
   if (pipelines.has(runId)) return;
   pipelines.add(runId);
 
@@ -175,9 +187,12 @@ export async function runAgentPipeline(
       600
     );
 
-    // Race the live Rtrvr browser session against a 4s fallback to portal_autofill.
-    // Was 8s — but real Rtrvr calls either land fast or land never; 4s is enough to
-    // tell the difference and saves ~4s on every run that falls back.
+    // Real, configurable operation timeout on the Rtrvr browser session
+    // (ticket 0026): `RTRVR_TIMEOUT_MS` (default 15s — a real headless
+    // browser fill+submit can legitimately take >4s; the old fixed 4s was a
+    // demo race that aborted slow-but-valid submissions). On timeout we fall
+    // back to portal autofill and log the operation latency (ticket 0011).
+    const rtrvrTimeoutMs = Number(process.env.RTRVR_TIMEOUT_MS) || 15000;
     const rtrvr = await Promise.race<RtrvrResult>([
       rtrvrPromise,
       new Promise((resolve) =>
@@ -186,9 +201,9 @@ export async function runAgentPipeline(
             resolve({
               used: false,
               mode: "portal_autofill",
-              error: "Rtrvr timeout — iframe autofill",
+              error: `Rtrvr timeout after ${rtrvrTimeoutMs}ms — iframe autofill`,
             }),
-          4000
+          rtrvrTimeoutMs
         )
       ),
     ]);
@@ -223,9 +238,10 @@ export async function runAgentPipeline(
       700
     );
 
-    // Adjudication delay tightened from 2.0s → 0.6s — still feels like a
-    // payer rule engine ticking, doesn't pad the demo unnecessarily.
-    const reviewMs = 600;
+    // No artificial review delay on the server path (ticket 0026); the
+    // mock-payer adjudication runs as fast as its logic allows. (A
+    // demo-only "ticking" animation belongs on the client.)
+    const reviewMs = 0;
     const adjudication = await adjudicateReference(submission.reference_id, reviewMs);
     // A failed/missing adjudication must NEVER present as an approval — that
     // would tell a clinic a PA was granted when no decision was reached.

@@ -20,20 +20,26 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
+from src import queue
 from src.auth import require_service_token
-from src.loop import run_agent
+from src.logging import setup_logging
 from src.persist import (
     create_run,
     fetch_run_detail,
+    fetch_run_status,
     poll_events_since,
 )
+from src.ratelimit import rate_limit_run
 from src.upload import read_pdf_upload
 
 load_dotenv()
+setup_logging()  # JSON structured logging to stdout (ticket 0011)
 
-# In-process queue: run_id → asyncio.Queue of events for SSE fan-out.
-# Single-process demo; production would use Redis pub/sub.
-_RUN_QUEUES: dict[str, asyncio.Queue] = {}
+# Terminal run states — the SSE tailer stops once a run reaches one.
+_TERMINAL = {"submitted", "approved", "denied", "error"}
+# How often the SSE handler polls durable agent_events for new steps (ticket
+# 0028 — no in-process queue; any instance can tail a run another host runs).
+_SSE_POLL_SECONDS = 0.5
 
 
 async def _init_conn(conn: asyncpg.Connection) -> None:
@@ -69,7 +75,27 @@ app.add_middleware(
 )
 
 
-@app.post("/api/run", dependencies=[Depends(require_service_token)])
+@app.middleware("http")
+async def _request_id(request: Request, call_next):
+    """Bind the inbound X-Request-ID to the log context + echo it (ticket 0021),
+    so a run correlates across web → agent → tool calls."""
+    from src.logging import request_id_var
+
+    rid = request.headers.get("x-request-id") or ""
+    token = request_id_var.set(rid or None)
+    try:
+        response = await call_next(request)
+    finally:
+        request_id_var.reset(token)
+    if rid:
+        response.headers["x-request-id"] = rid
+    return response
+
+
+@app.post(
+    "/api/run",
+    dependencies=[Depends(require_service_token), Depends(rate_limit_run)],
+)
 async def post_run(
     request: Request,
     pdf: UploadFile = File(...),
@@ -83,28 +109,13 @@ async def post_run(
         app.state.pool, pdf_bytes, pdf.filename or "rx.pdf", clinic_id=clinic_id
     )
 
-    queue: asyncio.Queue = asyncio.Queue()
-    _RUN_QUEUES[run_id] = queue
-
-    async def _on_event(event: dict) -> None:
-        await queue.put(event)
-
-    async def _run_in_background() -> None:
-        try:
-            await run_agent(
-                pool=app.state.pool,
-                run_id=run_id,
-                pdf_bytes=pdf_bytes,
-                on_event=_on_event,
-            )
-        finally:
-            await queue.put({"done": True})
-            # Keep queue around briefly so late subscribers still see "done".
-            await asyncio.sleep(30)
-            _RUN_QUEUES.pop(run_id, None)
-
-    asyncio.create_task(_run_in_background())
-    return {"run_id": run_id}
+    # Durable queue (ticket 0027): enqueue and return immediately. A separate
+    # worker process (src/worker.py) runs the agent to completion — no
+    # post-response `create_task` that a frozen instance would drop.
+    await queue.enqueue(
+        app.state.pool, run_id, pdf_bytes, pdf.filename or "rx.pdf", clinic_id=clinic_id
+    )
+    return {"run_id": run_id, "status": "queued"}
 
 
 @app.get("/api/run/{run_id}", dependencies=[Depends(require_service_token)])
@@ -121,21 +132,28 @@ async def get_run(run_id: str) -> dict:
 
 @app.get("/api/stream/{run_id}", dependencies=[Depends(require_service_token)])
 async def stream(run_id: str) -> EventSourceResponse:
-    queue = _RUN_QUEUES.get(run_id)
-
+    # Durable SSE (ticket 0028): there is no in-process queue. We tail the
+    # `agent_events` table — replaying any steps already written, then polling
+    # for new ones — until the run reaches a terminal status. This works no
+    # matter which host (API or worker) is executing the run, so a second
+    # instance never needs to start a duplicate pipeline.
     async def gen():
-        if queue is not None:
-            # Live run — drain the in-process queue.
-            while True:
-                ev = await queue.get()
+        last_step = 0
+        while True:
+            events = await poll_events_since(app.state.pool, run_id, after_step=last_step)
+            for ev in events:
+                last_step = max(last_step, ev["step_no"])
                 yield {"data": json.dumps(ev)}
-                if ev.get("done"):
-                    break
-        else:
-            # Late subscriber — replay from the DB, then end.
-            for ev in await poll_events_since(app.state.pool, run_id, after_step=-1):
-                yield {"data": json.dumps(ev)}
-            yield {"data": json.dumps({"done": True})}
+
+            status = await fetch_run_status(app.state.pool, run_id)
+            if status is None:
+                yield {"data": json.dumps({"error": "run not found"})}
+                break
+            if status in _TERMINAL and not events:
+                # Terminal and we've drained all steps.
+                yield {"data": json.dumps({"done": True, "status": status})}
+                break
+            await asyncio.sleep(_SSE_POLL_SECONDS)
 
     return EventSourceResponse(gen())
 

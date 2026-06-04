@@ -61,42 +61,42 @@ The `area` field is one of:
 
 ## Production-readiness roadmap
 
-Two audits (security/ops + correctness) produced 0005–0033. They cluster
-into five tracks. Within a track, work top-to-bottom. Across tracks, the
-P0s can proceed in parallel by different agents.
+> **Status (2026-06-03 re-audit):** 27 tickets in `done/` (0001–0020,
+> 0022–0024, 0030–0033) — verified by `tsc` clean, 39 passing tests, and
+> route-wiring spot checks. The work is real and integrated. **But several
+> "done" items are code-complete, not runtime-enforced** — see the two new
+> follow-ups below. Remaining real work is the agent epic plus deploy
+> verification.
 
-**1. Decide the agent (do this first — it unblocks the most)**
-- `0025` reconcile the two agent implementations ← keystone
-- then `0026` (remove theatrical pacing), `0014` (prompt injection),
-  `0021` (tracing) all depend on which agent is canonical
+### Open — what's actually left
 
-**2. Make the clinical workflow real (P0 — patient safety)**
+**A. The agent epic (needs both services running to build/test)**
+- `0025` make the Python agent canonical — **build phase** (decision done,
+  ADR 0013). Keystone for the rest.
 - `0029` process the uploaded document (stop replaying fixtures)
-- `0030` adjudication safety (no default-approve, no keyword decisions)
-- `0031` remove hardcoded identity (fake NPI) from submissions
-- `0013` harden the upload (after 0029 makes it a live path)
+- `0027` durable job queue · `0028` durable run/SSE state
+- `0026` remove theatrical pacing · `0021` distributed tracing
+- `0014` prompt-injection mitigation
+  (all depend on `0025`)
 
-**3. Make runs durable (P0/P1 — runs currently vanish)**
-- `0027` durable job queue (stop fire-and-forget)
-- `0028` durable run/SSE state (fix multi-instance double-filing)
-- `0016` remove silent in-memory fallbacks
-- `0017` idempotency keys (guards the double-file paths above)
+**B. Runtime enforcement / deploy verification (needs live InsForge)**
+- `0034` **wire the tenant-scoped client so RLS actually enforces** — today
+  `getInsForgeClient()` returns the admin client (RLS bypassed); isolation
+  is app-layer-only. P0.
+- `0035` apply + verify migrations 0004–0009 against staging/prod, then run
+  the cross-tenant RLS test.
 
-**4. Lock down access (P0 — everything is currently open)**
-- `0005` real auth + per-route authz
-- `0006` clinic_id + RLS (depends 0005, 0002)
-- `0007` unguessable reference IDs
-- `0008` PHI handling policy + audit log
-- `0018` adjudicate-patch allowlist (depends 0005)
-- `0012` rate limiting · `0024` security headers
+### Done (code-complete, verified offline)
 
-**5. Operability (P1/P2 — can't run blind in prod)**
-- `0009` CI · `0010` tests · `0032` typecheck+lint
-- `0011` logging+error reporting · `0021` tracing
-- `0015` health/readiness · `0019` env separation+prod guards
-- `0020` deploy manifests · `0033` pin deps
-- `0022` backups/DR/runbook · `0023` secrets rotation · `0003` migration tool
+Access/security: `0005` auth, `0006` RLS *(written; enforce via 0034)*,
+`0007` ref-ids, `0008` PHI+audit, `0012` rate-limit, `0017` idempotency,
+`0018` patch allowlist, `0024` headers, `0031` NPI/identity.
+Correctness: `0016` no silent fallbacks, `0030` adjudication safety.
+Ops: `0003` migration tool, `0009` CI, `0010` tests, `0011` logging,
+`0013` upload hardening, `0015` health, `0019` env guards, `0020` deploy,
+`0022` runbook, `0023` secrets, `0032` lint, `0033` deps.
 
-A fresh agent with no context should claim **`0025`** or **`0005`** —
-nothing downstream is safe to build until the agent is chosen and the
-doors are locked.
+A fresh agent should claim **`0034`** (close the RLS-bypass — highest
+open security gap) or **`0025`** (the agent build phase). Everything in
+group B needs InsForge credentials; group A needs `make dev` running both
+services.

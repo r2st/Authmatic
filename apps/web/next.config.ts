@@ -12,7 +12,10 @@ const CSP_REPORT_ONLY = [
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   "connect-src 'self' https:",
-  "frame-ancestors 'none'",
+  // 'self' (not 'none'): the /run/[id] page frames the same-origin HealthFirst
+  // portal to show live autofill. Cross-origin framing is still blocked, so
+  // clickjacking protection is preserved.
+  "frame-ancestors 'self'",
   "base-uri 'self'",
   "form-action 'self'",
   "report-uri /api/csp-report",
@@ -20,7 +23,9 @@ const CSP_REPORT_ONLY = [
 
 const SECURITY_HEADERS = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-  { key: "X-Frame-Options", value: "DENY" },
+  // SAMEORIGIN (not DENY): permit the same-origin portal iframe on /run/[id]
+  // while still blocking cross-origin framing.
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },

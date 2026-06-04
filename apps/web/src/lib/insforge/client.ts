@@ -31,9 +31,17 @@ export interface ScopedClient {
 }
 
 export function getInsForgeClient(session: ClinicSession): ScopedClient {
-  // TODO(0006 follow-up): issue an InsForge JWT for session.clinic_id, or
-  // acquire a pooled connection and `SET app.clinic_id`. Until then, RLS is
-  // defense-in-depth and app-layer checks (0005) are the enforced control.
+  // RLS enforcement is VERIFIED at the DB layer (ticket 0034): with
+  // `0010_force_rls.sql` (FORCE RLS) + `0011_add_app_role.sql` (non-superuser
+  // `authmatic_app`), a connection that `SET app.clinic_id = <clinic>` sees
+  // only its own clinic's rows — proven against a real Postgres (cross-tenant
+  // read returns 0). The remaining work is the DATA LAYER: the InsForge SDK is
+  // HTTP and cannot set the GUC, so wiring this requires either (a) an InsForge
+  // Auth JWT whose claim maps to auth.clinic_id(), or (b) a direct pg pool
+  // connecting as `authmatic_app` and setting the GUC per request. Neither is
+  // exercisable without the live InsForge backend / a new pg data layer, so
+  // this still returns the admin client and app-layer ownership checks (0005)
+  // remain the enforced control. See ADR 0007.
   return {
     db: getInsForgeAdmin().database,
     clinicId: session.clinic_id,

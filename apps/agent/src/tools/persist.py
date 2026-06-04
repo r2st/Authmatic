@@ -12,8 +12,6 @@ API layer. Keeping them separate so the agent's "verb" and the API's
 
 from __future__ import annotations
 
-import json
-
 import asyncpg
 import httpx
 

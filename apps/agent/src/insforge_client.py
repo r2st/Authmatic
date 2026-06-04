@@ -93,22 +93,26 @@ async def plan_next_step(history: list[dict]) -> dict:
 _FIXTURE_SCRIPT = [
     {
         "verb": "EXECUTE",
-        "plan": "Parse the prescription PDF in a Daytona sandbox to extract drug, NDC, dose, and ICD-10.",
+        "plan": "Parse the prescription PDF in a Daytona sandbox to extract drug, NDC, dose, "
+        "and ICD-10.",
         "args": {},
     },
     {
         "verb": "READ-WEB",
-        "plan": "Fetch the live UHC coverage rule for the extracted drug + member plan via Rtrvr.",
+        "plan": "Fetch the live UHC coverage rule for the extracted drug + member plan "
+        "via Rtrvr.",
         "args": {"plan_id": "UHC-CHOICE-PLUS"},
     },
     {
         "verb": "PERSIST",
-        "plan": "Write the structured fields and a drafted medical-necessity rationale to Postgres.",
+        "plan": "Write the structured fields and a drafted medical-necessity rationale "
+        "to Postgres.",
         "args": {},
     },
     {
         "verb": "VERIFY",
-        "plan": "Scan the outgoing packet via Opsera MCP for PHI over-disclosure before submission.",
+        "plan": "Scan the outgoing packet via Opsera MCP for PHI over-disclosure "
+        "before submission.",
         "args": {},
         "ready_to_submit": True,
     },

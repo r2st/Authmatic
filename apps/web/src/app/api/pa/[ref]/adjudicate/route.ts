@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adjudicateReference } from "@/lib/adjudication";
-import { getSubmission } from "@/lib/submissions";
+import { getSubmission, InvalidSubmissionPatchError } from "@/lib/submissions";
 
 /**
  * Simulates HealthFirst medical review — NOT auto-called on submit.
@@ -37,7 +37,15 @@ export async function POST(
   const reviewDelayMs =
     typeof body.review_delay_ms === "number" ? body.review_delay_ms : 8000;
 
-  const result = await adjudicateReference(ref, reviewDelayMs);
+  let result;
+  try {
+    result = await adjudicateReference(ref, reviewDelayMs);
+  } catch (err) {
+    if (err instanceof InvalidSubmissionPatchError) {
+      return NextResponse.json({ error: err.message }, { status: 422 });
+    }
+    throw err;
+  }
 
   if (!result) {
     return NextResponse.json({ error: "Adjudication failed" }, { status: 500 });

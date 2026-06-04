@@ -39,3 +39,10 @@ export function isInsForgeConfigured(): boolean {
 }
 
 export const STORAGE_BUCKET = "authmatic-demo";
+
+/**
+ * Environment flag (ticket 0019). `AUTHMATIC_ENV` ∈ development|staging|
+ * production. Dangerous/demo-only operations gate on `!IS_PRODUCTION`.
+ */
+export const AUTHMATIC_ENV = (process.env.AUTHMATIC_ENV ?? "development").toLowerCase();
+export const IS_PRODUCTION = AUTHMATIC_ENV === "production";

@@ -5,6 +5,8 @@ import { createRun } from "@/lib/agent-runs";
 import { BATCH_DEMO_IDS, DEMO_CASES, getDemoCase, LIVE_BATCH_IDS, type DemoCaseId } from "@/lib/demo-cases";
 import { createBatch } from "@/lib/batch-runs";
 import { getServerSession, unauthorized } from "@/lib/auth/server";
+import { hashBody, lookupIdempotency, saveIdempotency } from "@/lib/idempotency";
+import { isPythonAgentEnabled, proxyRun } from "@/lib/agent-proxy";
 
 function parseCaseId(raw: unknown): DemoCaseId | undefined {
   if (typeof raw !== "string" || !(raw in DEMO_CASES)) return undefined;
@@ -17,6 +19,7 @@ export async function POST(request: Request) {
   if (!session) return unauthorized();
 
   const runId = randomUUID();
+  const requestId = request.headers.get("x-request-id") ?? undefined;
   const contentType = request.headers.get("content-type") ?? "";
 
   let demo = true;
@@ -24,7 +27,16 @@ export async function POST(request: Request) {
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
-    demo = form.get("demo") === "true" || !form.get("chart");
+    const chart = form.get("chart");
+    // Canonical path (ticket 0025/0029): a real uploaded chart goes to the
+    // Python agent, which extracts the ACTUAL document — never a caseId
+    // fixture. Returns the agent's queued run id.
+    if (isPythonAgentEnabled() && chart instanceof Blob) {
+      const filename = (chart as File).name || "chart.pdf";
+      const result = await proxyRun(chart, filename, session.clinic_id, requestId);
+      return NextResponse.json({ ...result, demo: false, via: "python-agent" });
+    }
+    demo = form.get("demo") === "true" || !chart;
     caseId = parseCaseId(form.get("case_id"));
   } else if (contentType.includes("application/json")) {
     const body = (await request.json().catch(() => ({}))) as {
@@ -42,6 +54,24 @@ export async function POST(request: Request) {
     caseId = parseCaseId(body.case_id);
   }
 
+  // Idempotency (ticket 0017): a double-clicked "Run" with the same
+  // Idempotency-Key + same intent returns the original run instead of
+  // starting a second agent loop (two Rtrvr submissions). Scoped per clinic.
+  const idemKey = request.headers.get("Idempotency-Key");
+  const idemFingerprint = hashBody({ caseId: caseId ?? null, demo });
+  if (idemKey) {
+    const prior = lookupIdempotency(idemKey, session.clinic_id, idemFingerprint);
+    if (prior.kind === "conflict") {
+      return NextResponse.json(
+        { error: "idempotency_conflict", message: "Idempotency-Key reused with a different request." },
+        { status: 422 }
+      );
+    }
+    if (prior.kind === "replay") {
+      return NextResponse.json(prior.body, { status: prior.status });
+    }
+  }
+
   const form_payload = defaultPayload(caseId);
   createRun(runId, form_payload, caseId, session.clinic_id);
 
@@ -49,14 +79,16 @@ export async function POST(request: Request) {
 
   const demoCase = getDemoCase(caseId);
 
-  return NextResponse.json({
+  const responseBody = {
     run_id: runId,
     case_id: caseId ?? "sarah-martinez",
     demo,
     message: demo
       ? `Demo run started — ${demoCase.title}: ${demoCase.payload.patient_name}`
       : "Run started",
-  });
+  };
+  if (idemKey) saveIdempotency(idemKey, session.clinic_id, idemFingerprint, 200, responseBody);
+  return NextResponse.json(responseBody);
 }
 
 function startBatch(caseIds: string[], clinicId: string) {

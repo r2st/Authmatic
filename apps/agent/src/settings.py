@@ -48,6 +48,9 @@ class Settings(BaseSettings):
 
     # Demo
     demo_fixture_mode: bool = False
+    # In-process agent shortcut (demo): run the pipeline inside the request
+    # instead of the real agent service. Must be off in production (ticket 0019).
+    use_inprocess_agent: bool = False
     fixtures_path: str = os.environ.get(
         "FIXTURES_PATH",
         os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "fixtures"),
@@ -71,4 +74,9 @@ def assert_safe_for_production(s: Settings) -> None:
         raise RuntimeError(
             "Refusing to start: DEMO_FIXTURE_MODE is on in production. "
             "It replays fixtures instead of processing real input."
+        )
+    if s.is_production and s.use_inprocess_agent:
+        raise RuntimeError(
+            "Refusing to start: USE_INPROCESS_AGENT is on in production. "
+            "The real agent service must handle production runs."
         )

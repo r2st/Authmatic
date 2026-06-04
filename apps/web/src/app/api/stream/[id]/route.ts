@@ -2,15 +2,32 @@ import { NextResponse } from "next/server";
 import { defaultPayload, isPipelineRunning, runAgentPipeline } from "@/lib/agent-orchestrator";
 import { getRun } from "@/lib/agent-runs";
 import { denyIfNotOwner, getServerSession, unauthorized } from "@/lib/auth/server";
+import { isPythonAgentEnabled, proxyStream } from "@/lib/agent-proxy";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession();
   if (!session) return unauthorized();
 
   const { id } = await params;
+
+  // Canonical path (ticket 0025/0028): the run lives in the agent's durable
+  // state (prior_auths/agent_events). Proxy the agent's DB-tailing SSE stream
+  // through, forwarding the trace id (0021). Any web instance can serve it.
+  if (isPythonAgentEnabled()) {
+    const upstream = await proxyStream(id, request.headers.get("x-request-id") ?? undefined);
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
+    });
+  }
+
   const existing = getRun(id);
   if (!existing) {
     return NextResponse.json({ error: "Run not found" }, { status: 404 });

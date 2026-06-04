@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { signSession, verifySession, type ClinicSession } from "../auth/session";
+import { signSession, verifySession } from "../auth/session";
 
 const BASE = {
   sub: "u1",
@@ -27,7 +27,7 @@ describe("session sign/verify (ticket 0005)", () => {
 
   it("rejects a tampered payload", () => {
     const token = signSession(BASE);
-    const [body, sig] = token.split(".");
+    const sig = token.split(".")[1];
     const forged = Buffer.from(JSON.stringify({ ...BASE, clinic_id: "clinic-2", exp: 9999999999 }))
       .toString("base64url");
     expect(verifySession(`${forged}.${sig}`)).toBeNull();
