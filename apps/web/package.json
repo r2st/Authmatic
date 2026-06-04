@@ -6,12 +6,17 @@
     "dev": "npm run sync:demo && next dev",
     "build": "npm run sync:demo && next build",
     "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "sync:demo": "node scripts/sync-demo-pdfs.mjs",
     "generate:pdfs": "node ../../scripts/generate-demo-pdfs.mjs && npm run sync:demo",
     "seed:insforge": "node scripts/seed-insforge.mjs",
     "upload:tigris": "node scripts/upload-demo-tigris.mjs"
   },
   "dependencies": {
+    "@authmatic/shared": "workspace:*",
     "@aws-sdk/client-s3": "^3.1057.0",
     "@daytonaio/sdk": "^0.183.0",
     "@insforge/sdk": "^1.3.0",
@@ -22,12 +27,16 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@next/eslint-plugin-next": "^15.1.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.20",
+    "eslint": "^9.17.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^2.1.8"
   }
 }

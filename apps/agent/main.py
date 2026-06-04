@@ -16,16 +16,18 @@ from uuid import UUID
 
 import asyncpg
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 
+from src.auth import require_service_token
 from src.loop import run_agent
 from src.persist import (
     create_run,
     fetch_run_detail,
     poll_events_since,
 )
+from src.upload import read_pdf_upload
 
 load_dotenv()
 
@@ -46,6 +48,10 @@ async def _init_conn(conn: asyncpg.Connection) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fail fast on unsafe prod config (ticket 0019) before opening the pool.
+    from src.settings import assert_safe_for_production, get_settings
+
+    assert_safe_for_production(get_settings())
     app.state.pool = await asyncpg.create_pool(
         os.environ["INSFORGE_DB_URL"], init=_init_conn,
     )
@@ -63,13 +69,19 @@ app.add_middleware(
 )
 
 
-@app.post("/api/run")
-async def post_run(pdf: UploadFile = File(...)) -> dict[str, str]:
-    if pdf.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="Must upload application/pdf")
-
-    pdf_bytes = await pdf.read()
-    run_id = await create_run(app.state.pool, pdf_bytes, pdf.filename or "rx.pdf")
+@app.post("/api/run", dependencies=[Depends(require_service_token)])
+async def post_run(
+    request: Request,
+    pdf: UploadFile = File(...),
+    clinic_id: str = Form(default="unknown"),
+) -> dict[str, str]:
+    # Hardened intake (ticket 0013): size cap + magic-byte validation +
+    # sanitized storage key. The client content_type header is advisory only;
+    # read_pdf_upload confirms the real bytes.
+    pdf_bytes = await read_pdf_upload(pdf, request.headers.get("content-length"))
+    run_id = await create_run(
+        app.state.pool, pdf_bytes, pdf.filename or "rx.pdf", clinic_id=clinic_id
+    )
 
     queue: asyncio.Queue = asyncio.Queue()
     _RUN_QUEUES[run_id] = queue
@@ -95,7 +107,7 @@ async def post_run(pdf: UploadFile = File(...)) -> dict[str, str]:
     return {"run_id": run_id}
 
 
-@app.get("/api/run/{run_id}")
+@app.get("/api/run/{run_id}", dependencies=[Depends(require_service_token)])
 async def get_run(run_id: str) -> dict:
     try:
         UUID(run_id)
@@ -107,7 +119,7 @@ async def get_run(run_id: str) -> dict:
     return detail
 
 
-@app.get("/api/stream/{run_id}")
+@app.get("/api/stream/{run_id}", dependencies=[Depends(require_service_token)])
 async def stream(run_id: str) -> EventSourceResponse:
     queue = _RUN_QUEUES.get(run_id)
 
@@ -133,9 +145,23 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/api/smoke")
+@app.get("/readyz")
+async def ready() -> dict:
+    """Readiness probe (ticket 0015): 200 only if the DB pool answers."""
+    try:
+        async with app.state.pool.acquire() as conn:
+            db_ok = (await conn.fetchval("SELECT 1")) == 1
+    except Exception:
+        db_ok = False
+    status = "ok" if db_ok else "degraded"
+    if not db_ok:
+        raise HTTPException(status_code=503, detail={"status": status, "deps": {"db": "down"}})
+    return {"status": status, "deps": {"db": "ok"}}
+
+
+@app.get("/api/smoke", dependencies=[Depends(require_service_token)])
 async def smoke() -> dict:
-    """Hello-world each sponsor. Used by scripts/smoke.sh."""
+    """Hello-world each sponsor. Used by scripts/smoke.sh. Admin/service-only."""
     from src.tools import execute, read_web, verify
 
     results = {}

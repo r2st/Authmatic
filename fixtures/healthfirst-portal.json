@@ -1,0 +1,222 @@
+{
+  "insurer": {
+    "name": "HealthFirst",
+    "plan": "HealthFirst PPO",
+    "portal_title": "HealthFirst Provider Portal"
+  },
+  "base_urls": {
+    "local": "http://localhost:3000",
+    "note": "Use whatever port `npm run dev` prints. Do NOT hardcode 3000 if the app binds to 3001/3002."
+  },
+  "pages": {
+    "prior_auth_form": {
+      "path": "/portal/healthfirst/prior-auth",
+      "full_url_local": "http://localhost:3000/portal/healthfirst/prior-auth",
+      "purpose": "Pharmacy prior authorization request form — Rtrvr fills and submits here",
+      "autofill_demo_query": "?autofill=1&run={run_id}",
+      "autofill_note": "Built-in client autofill for demo only. Teammate replaces with real Rtrvr browser automation."
+    },
+    "submission_status": {
+      "path": "/portal/healthfirst/submission/{reference_id}",
+      "full_url_local": "http://localhost:3000/portal/healthfirst/submission/PA-2026-00451",
+      "purpose": "Post-submit status page. Polls GET /api/pa/{ref}. Starts as pending_review.",
+      "reference_id_in_url": true
+    },
+    "success_redirect": {
+      "path": "/portal/healthfirst/success",
+      "query": "?ref={reference_id}",
+      "purpose": "Legacy redirect → submission status page"
+    },
+    "main_app_home": {
+      "path": "/",
+      "purpose": "Upload PDFs + start agent run"
+    },
+    "agent_run_audit": {
+      "path": "/run/{run_id}",
+      "purpose": "SSE agent steps + embedded portal iframe during SUBMIT step"
+    }
+  },
+  "form": {
+    "form_id": "prior-auth-form",
+    "method": "POST",
+    "action": "/api/pa/submit",
+    "submit_button_id": "submit-prior-auth",
+    "submit_button_text": "Submit Prior Authorization",
+    "fields": [
+      {
+        "name": "patient_name",
+        "id": "patient_name",
+        "label": "Patient Name",
+        "type": "text",
+        "required": true,
+        "demo_value": "Sarah Martinez"
+      },
+      {
+        "name": "dob",
+        "id": "dob",
+        "label": "Date of Birth",
+        "type": "text",
+        "required": true,
+        "demo_value": "03/14/1986"
+      },
+      {
+        "name": "member_id",
+        "id": "member_id",
+        "label": "Member ID",
+        "type": "text",
+        "required": true,
+        "demo_value": "HF45821973",
+        "validation": "Must match /^HF\\d{8}$/i for approval"
+      },
+      {
+        "name": "diagnosis",
+        "id": "diagnosis",
+        "label": "Primary Diagnosis",
+        "type": "text",
+        "required": true,
+        "demo_value": "Type 2 Diabetes (E11.9)"
+      },
+      {
+        "name": "medication",
+        "id": "medication",
+        "label": "Requested Medication",
+        "type": "text",
+        "required": true,
+        "demo_value": "Ozempic"
+      },
+      {
+        "name": "dosage",
+        "id": "dosage",
+        "label": "Dosage / Frequency",
+        "type": "text",
+        "required": true,
+        "demo_value": "0.25mg weekly"
+      },
+      {
+        "name": "provider_name",
+        "id": "provider_name",
+        "label": "Prescribing Provider",
+        "type": "text",
+        "required": true,
+        "demo_value": "Emily Chen, MD"
+      },
+      {
+        "name": "justification",
+        "id": "justification",
+        "label": "Clinical Justification / Step Therapy",
+        "type": "textarea",
+        "required": true,
+        "demo_value": "Poor glycemic control despite first-line therapy. HbA1c 8.9% on Metformin x18mo."
+      }
+    ]
+  },
+  "rtrvr_selectors": {
+    "url": "{WEB_URL}/portal/healthfirst/prior-auth",
+    "fields": {
+      "patient_name": "#patient_name",
+      "dob": "#dob",
+      "member_id": "#member_id",
+      "diagnosis": "#diagnosis",
+      "medication": "#medication",
+      "dosage": "#dosage",
+      "provider_name": "#provider_name",
+      "justification": "#justification"
+    },
+    "submit": "#submit-prior-auth",
+    "success_signal": "URL contains /portal/healthfirst/submission/PA-",
+    "extract_reference_id": "Parse reference_id from redirect URL path segment after /submission/"
+  },
+  "rtrvr_task_prompt": "Open {PORTAL_URL}. Fill every required field: patient_name, dob, member_id, diagnosis, medication, dosage, provider_name, justification. Click the Submit Prior Authorization button (#submit-prior-auth). Wait for redirect to /portal/healthfirst/submission/{reference_id}. Return the reference_id from the final URL.",
+  "api": {
+    "submit": {
+      "method": "POST",
+      "path": "/api/pa/submit",
+      "content_types": ["application/x-www-form-urlencoded", "multipart/form-data", "application/json"],
+      "json_body_example": {
+        "patient_name": "Sarah Martinez",
+        "dob": "03/14/1986",
+        "member_id": "HF45821973",
+        "diagnosis": "Type 2 Diabetes (E11.9)",
+        "medication": "Ozempic",
+        "dosage": "0.25mg weekly",
+        "provider_name": "Emily Chen, MD",
+        "justification": "Poor glycemic control despite first-line therapy. HbA1c 8.9% on Metformin x18mo."
+      },
+      "response_json": {
+        "reference_id": "PA-2026-00451",
+        "status": "pending_review",
+        "status_url": "http://localhost:3000/portal/healthfirst/submission/PA-2026-00451",
+        "message": "Prior authorization request received. Status: Pending Review."
+      },
+      "html_behavior": "303 redirect to /portal/healthfirst/submission/{reference_id}"
+    },
+    "get_status": {
+      "method": "GET",
+      "path": "/api/pa/{reference_id}",
+      "response_example": {
+        "reference_id": "PA-2026-00451",
+        "status": "pending_review",
+        "patient_name": "Sarah Martinez",
+        "submitted_at": "2026-05-31T12:00:00.000Z"
+      }
+    },
+    "adjudicate": {
+      "method": "POST",
+      "path": "/api/pa/{reference_id}/adjudicate",
+      "body_optional": { "review_delay_ms": 8000 },
+      "note": "Agent calls AFTER form submit. Simulates payer medical review. Not auto-called on submit.",
+      "status_flow": ["pending_review", "under_review", "approved|denied"]
+    },
+    "start_run": {
+      "method": "POST",
+      "path": "/api/run",
+      "body": { "demo": true },
+      "response": { "run_id": "uuid", "demo": true }
+    },
+    "stream_run": {
+      "method": "GET",
+      "path": "/api/stream/{run_id}",
+      "type": "text/event-stream",
+      "events": ["connected", "step", "portal", "done", "error"],
+      "portal_event_example": {
+        "type": "portal",
+        "path": "/portal/healthfirst/prior-auth?autofill=1&run={run_id}"
+      }
+    },
+    "get_run": {
+      "method": "GET",
+      "path": "/api/run/{run_id}",
+      "purpose": "Full audit payload for /run/[id]"
+    }
+  },
+  "workflow": {
+    "steps": [
+      "POST /api/run → run_id",
+      "GET /api/stream/{run_id} → SSE steps (EXTRACT, VERIFY, SUBMIT, ADJUDICATE, PERSIST)",
+      "On portal event: open {WEB_URL}{path} in browser (Rtrvr)",
+      "Rtrvr fills form + clicks submit → pending_review",
+      "POST /api/pa/{reference_id}/adjudicate → under_review → approved|denied",
+      "Poll GET /api/pa/{reference_id} or load submission status page for receipt"
+    ],
+    "approval_rules": {
+      "approve_when": "All fields present, member_id matches HF########, medication on formulary (ozempic/semaglutide), step therapy keywords in justification",
+      "deny_when": "Missing fields, bad member_id, insufficient step therapy documentation, non-formulary drug"
+    }
+  },
+  "demo_assets": {
+    "case_fixture": "fixtures/healthfirst-case.json",
+    "chart_pdf": "assets/demo/patient_chart_sarah_martinez.pdf",
+    "prescription_pdf": "assets/demo/prescription_ozempic_martinez.pdf",
+    "public_chart": "/demo/patient_chart_sarah_martinez.pdf",
+    "public_prescription": "/demo/prescription_ozempic_martinez.pdf"
+  },
+  "source_files": {
+    "form_component": "apps/web/src/components/portal/PriorAuthForm.tsx",
+    "form_page": "apps/web/src/app/portal/healthfirst/prior-auth/page.tsx",
+    "status_page": "apps/web/src/app/portal/healthfirst/submission/[ref]/page.tsx",
+    "submit_api": "apps/web/src/app/api/pa/submit/route.ts",
+    "adjudication_logic": "apps/web/src/lib/adjudication.ts",
+    "types": "apps/web/src/lib/pa-types.ts",
+    "demo_payload": "apps/web/src/lib/demo-case.ts"
+  }
+}

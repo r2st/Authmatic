@@ -1,3 +1,15 @@
+/**
+ * ⚠️ DEMO-ONLY — DO NOT ADD FEATURES HERE.
+ *
+ * This is the scripted demo pipeline (no LLM planner — it's theater).
+ * Per ADR 0013 the canonical agent is the Python ReAct loop in
+ * `apps/agent/`. This file is retained only as the `DEMO_FIXTURE_MODE`
+ * fallback during migration (ticket 0025) and is slated for deletion
+ * once `/api/run` proxies to the real agent. New agent logic goes in
+ * `apps/agent/`, not here.
+ *
+ * See: docs/decisions/0013-canonical-agent.md
+ */
 import { adjudicateReference } from "./adjudication";
 import {
   appendStep,
@@ -215,7 +227,17 @@ export async function runAgentPipeline(
     // payer rule engine ticking, doesn't pad the demo unnecessarily.
     const reviewMs = 600;
     const adjudication = await adjudicateReference(submission.reference_id, reviewMs);
-    const finalStatus = adjudication?.status ?? "approved";
+    // A failed/missing adjudication must NEVER present as an approval — that
+    // would tell a clinic a PA was granted when no decision was reached.
+    // Surface it as a run error; the submission stays at its real DB status
+    // (pending_review / under_review). See docs/decisions/0015-adjudication-scope.md.
+    if (!adjudication) {
+      throw new Error(
+        `Adjudication did not complete for ${submission.reference_id}; ` +
+          `submission remains pending payer review`
+      );
+    }
+    const finalStatus = adjudication.status;
 
     updateStep(runId, 4, {
       tool_output: {

@@ -58,14 +58,17 @@ export function getDemoPortalFormValues(caseId?: string | null): PortalFormValue
     primary_patient_id: p.member_id,
     secondary_insurance_name: "",
     secondary_patient_id: "",
-    prescriber_first_name: prescriber.first || "Emily",
-    prescriber_last_name: prescriber.last || "Chen",
+    prescriber_first_name: prescriber.first,
+    prescriber_last_name: prescriber.last,
     prescriber_specialty: "Internal Medicine",
     prescriber_address: "1840 Telegraph Ave",
     prescriber_city: "Oakland",
     prescriber_state: "CA",
     prescriber_zip: "94612",
-    prescriber_npi: "1234567890",
+    // DEMO ONLY — fills the simulated HealthFirst sandbox portal, never a real
+    // payer. A Luhn-valid placeholder (the old 1234567890 was an INVALID NPI).
+    // Real submissions pull a verified NPI from `providers` (ticket 0031).
+    prescriber_npi: "1234567893",
     prescriber_phone: "(510) 555-0142",
     prescriber_fax: "(510) 555-0143",
     prescriber_email: "e.chen@bayareapc.com",

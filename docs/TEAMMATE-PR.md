@@ -18,7 +18,7 @@ Ask Subhendu to merge, or add Gulnoza as collaborator on `r2st/Authmatic`.
 | Submission receipt links | relative URLs, dashboard links |
 | Tigris + InsForge persist | existing `tigris/`, `submissions.ts` |
 | Rtrvr + Opsera + Daytona | `apps/web/src/lib/sponsors/` |
-| Portal handoff spec | `insurance/healthfirst/portal-spec.json` |
+| Portal handoff spec | `fixtures/insurance/healthfirst/portal-spec.json` |
 
 ## Demo flow (local)
 

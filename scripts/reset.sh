@@ -14,6 +14,14 @@ fi
 
 : "${INSFORGE_DB_URL:?INSFORGE_DB_URL not set}"
 
+# Prod guard (ticket 0019): this TRUNCATEs tables — refuse in production
+# unless explicitly forced.
+if [[ "${AUTHMATIC_ENV:-development}" == "production" && "${1:-}" != "--force" ]]; then
+  echo "REFUSING: AUTHMATIC_ENV=production — reset.sh TRUNCATEs tables." >&2
+  echo "Re-run with --force only if you are absolutely certain." >&2
+  exit 1
+fi
+
 echo "Resetting Authmatic agent state..."
 
 psql "$INSFORGE_DB_URL" <<'SQL'

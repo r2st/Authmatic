@@ -23,6 +23,7 @@ export interface TigrisArtifacts {
 export interface AgentRun {
   id: string;
   status: RunStatus;
+  clinic_id?: string; // owning clinic (ticket 0005 tenancy); undefined for legacy/demo runs
   case_id?: string;
   form_payload: PaFormPayload;
   reference_id?: string;
@@ -44,11 +45,13 @@ function store(): Map<string, AgentRun> {
 export function createRun(
   id: string,
   form_payload: PaFormPayload,
-  case_id?: string
+  case_id?: string,
+  clinic_id?: string
 ): AgentRun {
   const run: AgentRun = {
     id,
     status: "running",
+    clinic_id,
     case_id,
     form_payload,
     steps: [],
@@ -62,8 +65,10 @@ export function getRun(id: string): AgentRun | undefined {
   return store().get(id);
 }
 
-export function listRuns(limit = 20): AgentRun[] {
+/** List runs, optionally scoped to one clinic (ticket 0005 tenancy). */
+export function listRuns(limit = 20, clinic_id?: string): AgentRun[] {
   return [...store().values()]
+    .filter((r) => (clinic_id ? r.clinic_id === clinic_id : true))
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .slice(0, limit);
 }

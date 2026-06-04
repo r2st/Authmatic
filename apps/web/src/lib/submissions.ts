@@ -1,31 +1,16 @@
-import type { PaFormPayload, PaSubmission, PaStatus } from "./pa-types";
+import type { PaFormPayload, PaSubmission, PaSubmissionRow } from "@authmatic/shared";
 import { getInsForgeAdmin, isInsForgeConfigured } from "./insforge/admin";
+import { auditLog } from "./audit";
+import { newReferenceId } from "./reference-id";
 
-type DbRow = {
-  reference_id: string;
-  patient_name: string;
-  dob: string;
-  member_id: string;
-  diagnosis: string;
-  medication: string;
-  dosage: string;
-  provider_name: string;
-  justification: string;
-  status: PaStatus;
-  submitted_at: string;
-  under_review_at?: string | null;
-  decided_at?: string | null;
-  decision_notes?: string | null;
-  denial_reason?: string | null;
-  reviewer_id?: string | null;
-};
+type DbRow = PaSubmissionRow;
 
 const memory = new Map<string, PaSubmission>();
-let counter = 451;
 
 function rowToSubmission(row: DbRow): PaSubmission {
   return {
     reference_id: row.reference_id,
+    clinic_id: row.clinic_id ?? undefined,
     patient_name: row.patient_name,
     dob: row.dob,
     member_id: row.member_id,
@@ -44,53 +29,26 @@ function rowToSubmission(row: DbRow): PaSubmission {
   };
 }
 
-function nextLocalReferenceId(): string {
-  const id = `PA-2026-${String(counter).padStart(5, "0")}`;
-  counter += 1;
-  return id;
-}
-
-async function nextReferenceId(): Promise<string> {
-  if (!isInsForgeConfigured()) return nextLocalReferenceId();
-
-  try {
-    const insforge = getInsForgeAdmin();
-    const { data, error } = await insforge.database
-      .from("pa_submissions")
-      .select("reference_id")
-      .order("reference_id", { ascending: false })
-      .limit(1);
-
-    if (error) return nextLocalReferenceId();
-
-    let next = 451;
-    const latest = data?.[0]?.reference_id as string | undefined;
-    if (latest) {
-      const match = latest.match(/PA-2026-(\d+)$/i);
-      const num = match ? parseInt(match[1], 10) : NaN;
-      if (!Number.isNaN(num) && num >= next) next = num + 1;
-    }
-    counter = next + 1;
-    return `PA-2026-${String(next).padStart(5, "0")}`;
-  } catch {
-    return nextLocalReferenceId();
-  }
-}
-
 function saveLocal(submission: PaSubmission): PaSubmission {
   memory.set(submission.reference_id, submission);
   return submission;
 }
 
-export async function createSubmission(payload: PaFormPayload): Promise<PaSubmission> {
-  const reference_id = await nextReferenceId();
+export async function createSubmission(
+  payload: PaFormPayload,
+  clinic_id?: string
+): Promise<PaSubmission> {
+  const reference_id = newReferenceId();
   const submitted_at = new Date().toISOString();
   const submission: PaSubmission = {
     ...payload,
     reference_id,
+    clinic_id,
     status: "pending_review",
     submitted_at,
   };
+
+  void auditLog({ action: "create", resource: "pa_submission", resource_id: reference_id, actor_clinic: clinic_id });
 
   if (!isInsForgeConfigured()) {
     return saveLocal(submission);
@@ -98,9 +56,11 @@ export async function createSubmission(payload: PaFormPayload): Promise<PaSubmis
 
   try {
     const insforge = getInsForgeAdmin();
+    // clinic_id column is added by ticket 0006's migration; include it so
+    // tenancy is recorded as soon as that migration is applied.
     const { data, error } = await insforge.database
       .from("pa_submissions")
-      .insert([{ reference_id, ...payload, status: "pending_review", submitted_at }])
+      .insert([{ reference_id, clinic_id, ...payload, status: "pending_review", submitted_at }])
       .select("*");
 
     if (error) throw new Error(error.message);
@@ -111,6 +71,10 @@ export async function createSubmission(payload: PaFormPayload): Promise<PaSubmis
 }
 
 export async function getSubmission(reference_id: string): Promise<PaSubmission | null> {
+  // Audit every read of a PHI resource (ADR 0008). Actor identity is
+  // threaded from the session by ticket 0005; null until then.
+  void auditLog({ action: "read", resource: "pa_submission", resource_id: reference_id });
+
   if (memory.has(reference_id)) {
     return memory.get(reference_id) ?? null;
   }
@@ -162,15 +126,18 @@ export async function updateSubmission(
   }
 }
 
-export async function listSubmissions(limit = 20): Promise<PaSubmission[]> {
+/** List submissions, scoped to one clinic when `clinic_id` is given (tenancy). */
+export async function listSubmissions(limit = 20, clinic_id?: string): Promise<PaSubmission[]> {
   if (isInsForgeConfigured()) {
     try {
       const insforge = getInsForgeAdmin();
-      const { data, error } = await insforge.database
+      let query = insforge.database
         .from("pa_submissions")
         .select("*")
         .order("submitted_at", { ascending: false })
         .limit(limit);
+      if (clinic_id) query = query.eq("clinic_id", clinic_id);
+      const { data, error } = await query;
 
       if (!error && data?.length) {
         return data.map((row) => rowToSubmission(row as DbRow));
@@ -181,6 +148,7 @@ export async function listSubmissions(limit = 20): Promise<PaSubmission[]> {
   }
 
   return [...memory.values()]
+    .filter((s) => (clinic_id ? s.clinic_id === clinic_id : true))
     .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at))
     .slice(0, limit);
 }

@@ -113,6 +113,17 @@ The agent follows a bounded case-worker loop:
 
 ## Data model
 
+The schema is split into two subdomains with a formal boundary —
+`agent_run` (the autonomous PA filing loop) and `clinic_form` (the
+HealthFirst portal submission flow). See
+[ADR 0005 — Data-model boundary](decisions/0005-data-model-boundary.md)
+for ownership, rationale, and the optional cross-link.
+
+The SQL below is the `agent_run` subdomain. The `clinic_form` subdomain
+(`pa_submissions`) lives in
+[`db/migrations/0002_add_pa_submissions.sql`](../db/migrations/0002_add_pa_submissions.sql) and
+[`0003_add_pa_submissions_review_cols.sql`](../db/migrations/0003_add_pa_submissions_review_cols.sql).
+
 ```sql
 -- patients: one row per demo patient (we'll seed 3)
 CREATE TABLE patients (

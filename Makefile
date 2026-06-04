@@ -1,4 +1,4 @@
-.PHONY: help install smoke dev seed reset clean fixtures snapshot publish
+.PHONY: help install smoke dev seed reset clean fixtures snapshot
 
 help:
 	@echo "Authmatic — common commands"
@@ -10,7 +10,6 @@ help:
 	@echo "  make dev       — run web (3000) + agent (8000) concurrently"
 	@echo "  make reset     — wipe + re-seed Postgres (clean demo run)"
 	@echo "  make clean     — remove build artifacts and caches"
-	@echo "  make publish   — sync submission/ branch → ../Authmatic/main → public push"
 	@echo ""
 
 install:
@@ -35,21 +34,6 @@ reset:
 	bash scripts/reset.sh
 
 clean:
-	rm -rf node_modules apps/*/node_modules apps/*/.next .pnpm-store
+	rm -rf node_modules apps/*/node_modules apps/*/.next packages/*/node_modules .pnpm-store
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type d -name .pytest_cache -exec rm -rf {} +
-
-# Sync submission/'s feature branch into ../Authmatic/main and push to
-# public GitHub. Codifies the workflow ratified in
-# docs/decisions/0004-canonical-source-tree.md. Refuses to run with a
-# dirty working tree to keep the public log auditable.
-publish:
-	@git diff --quiet || { echo "Uncommitted changes in submission/. Commit before publish."; exit 1; }
-	@branch=$$(git rev-parse --abbrev-ref HEAD); \
-	  echo "Publishing submission/$$branch → Authmatic/main..."; \
-	  git push origin HEAD && \
-	  git -C ../Authmatic fetch origin && \
-	  git -C ../Authmatic checkout main && \
-	  git -C ../Authmatic merge --ff-only origin/main && \
-	  git -C ../Authmatic merge --no-ff "origin/$$branch" -m "Sync from $$branch" && \
-	  git -C ../Authmatic push origin main

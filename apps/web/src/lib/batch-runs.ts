@@ -2,6 +2,7 @@ import type { AgentRun } from "./agent-runs";
 
 export interface BatchRun {
   id: string;
+  clinic_id?: string; // owning clinic (ticket 0005 tenancy)
   case_ids: string[];
   run_ids: string[];
   created_at: string;
@@ -14,9 +15,15 @@ function store(): Map<string, BatchRun> {
   return globalThis.__batchRuns;
 }
 
-export function createBatch(id: string, case_ids: string[], run_ids: string[]): BatchRun {
+export function createBatch(
+  id: string,
+  case_ids: string[],
+  run_ids: string[],
+  clinic_id?: string
+): BatchRun {
   const batch: BatchRun = {
     id,
+    clinic_id,
     case_ids,
     run_ids,
     created_at: new Date().toISOString(),

@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { listRuns } from "@/lib/agent-runs";
 import { listSubmissions } from "@/lib/submissions";
+import { getServerSession, unauthorized } from "@/lib/auth/server";
 
 export async function GET() {
-  const submissions = await listSubmissions(15);
-  const runs = listRuns(10);
+  const session = await getServerSession();
+  if (!session) return unauthorized();
+
+  // Scope every listing to the caller's clinic (tenancy).
+  const submissions = await listSubmissions(15, session.clinic_id);
+  const runs = listRuns(10, session.clinic_id);
 
   const approved = submissions.filter((s) => s.status === "approved").length;
   const pending = submissions.filter(

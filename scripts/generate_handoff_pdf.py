@@ -92,7 +92,7 @@ def build():
     # --- DONE ---
     pdf.section("1. What we have (built)")
     pdf.bullet("Demo PDFs: assets/demo/patient_chart_sarah_martinez.pdf + prescription_ozempic_martinez.pdf")
-    pdf.bullet("Mock data: mock/healthfirst-case.json (all extractable fields + workflow API paths)")
+    pdf.bullet("Mock data: fixtures/healthfirst-case.json (all extractable fields + workflow API paths)")
     pdf.bullet("Next.js app: apps/web (runs on port 3000)")
     pdf.bullet("Mock HealthFirst prior-auth form: /portal/healthfirst/prior-auth")
     pdf.bullet("Realistic PA workflow - submit does NOT auto-approve:")
@@ -233,12 +233,14 @@ def build():
     pdf.section("9. Repo map")
     pdf.code_block(
         "authmatic/\n"
-        "  apps/web/          <- Next.js + mock portal (BUILT)\n"
-        "  apps/agent/        <- FastAPI agent (NOT BUILT - teammate)\n"
+        "  apps/web/          <- Next.js + mock portal\n"
+        "  apps/agent/        <- FastAPI agent\n"
+        "  packages/          <- shared TS types\n"
+        "  db/migrations/     <- schema + incremental migrations\n"
+        "  fixtures/          <- healthfirst-case.json + portal spec\n"
         "  assets/demo/       <- Sarah PDFs\n"
-        "  mock/              <- healthfirst-case.json\n"
-        "  presentation.html  <- pitch deck\n"
-        "  docs/              <- this handoff PDF"
+        "  infra/             <- docker-compose.local.yml\n"
+        "  docs/              <- architecture, handoff, sponsor notes"
     )
 
     pdf.section("10. Critical coordination")

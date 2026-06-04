@@ -13,6 +13,8 @@ from pathlib import Path
 
 import asyncpg
 
+from .upload import storage_key
+
 
 # A demo patient gets seeded on every fresh run if none exists — see
 # scripts/seed.sh for the full set. This is the fallback so a clean DB
@@ -28,11 +30,15 @@ _FALLBACK_PATIENT = {
 }
 
 
-async def create_run(pool: asyncpg.Pool, pdf_bytes: bytes, filename: str) -> str:
+async def create_run(
+    pool: asyncpg.Pool, pdf_bytes: bytes, filename: str, clinic_id: str = "unknown"
+) -> str:
     """Insert a fresh prior_auths row, return its UUID as str.
 
     For the demo, the PDF is stored to Insforge object storage and the key
     is written to trigger_pdf_key. For local dev we just keep it in-memory.
+    The storage key derives uniqueness from clinic_id + run_id, never from the
+    untrusted upload filename (ticket 0013).
     """
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -55,19 +61,24 @@ async def create_run(pool: asyncpg.Pool, pdf_bytes: bytes, filename: str) -> str
                     _FALLBACK_PATIENT["member_id"],
                 )
 
-            # In production: upload pdf_bytes to Insforge storage, get a key.
-            # For the demo path we just stash the filename.
-            storage_key = f"charts/{filename}"
-
             run_id = await conn.fetchval(
                 """
                 INSERT INTO prior_auths
-                  (patient_id, drug_name, trigger_pdf_key, status)
-                VALUES ($1, '<pending>', $2, 'pending')
+                  (patient_id, drug_name, status)
+                VALUES ($1, '<pending>', 'pending')
                 RETURNING id
                 """,
                 patient_id,
-                storage_key,
+            )
+
+            # Safe storage key — uniqueness from clinic_id + run_id, with the
+            # filename sanitized (no path traversal / collision via filename).
+            # In production: upload pdf_bytes to Insforge storage under this key.
+            key = storage_key(clinic_id, str(run_id), filename)
+            await conn.execute(
+                "UPDATE prior_auths SET trigger_pdf_key = $1 WHERE id = $2",
+                key,
+                run_id,
             )
     return str(run_id)
 

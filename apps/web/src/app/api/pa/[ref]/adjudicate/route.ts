@@ -5,6 +5,11 @@ import { getSubmission } from "@/lib/submissions";
 /**
  * Simulates HealthFirst medical review — NOT auto-called on submit.
  * Agent backend calls this after form submission to run payer adjudication.
+ *
+ * PUBLIC by design — this is the simulated *payer's* review action, keyed
+ * by the unguessable reference id (ticket 0007), not a clinic session. The
+ * field-level allowlist for what this may mutate is tightened in ticket
+ * 0018 (it must not accept an arbitrary patch). Rate-limited via 0012.
  */
 export async function POST(
   request: NextRequest,

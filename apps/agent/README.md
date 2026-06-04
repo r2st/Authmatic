@@ -3,7 +3,7 @@
 **Owner:** Teammate  
 **Integration surface:** mock HealthFirst portal in `apps/web` — see **[docs/healthfirst-portal-handoff.md](../../docs/healthfirst-portal-handoff.md)**
 
-**Machine-readable portal spec:** [`mock/healthfirst-portal.json`](../../mock/healthfirst-portal.json)
+**Machine-readable portal spec:** [`fixtures/healthfirst-portal.json`](../../fixtures/healthfirst-portal.json)
 
 ---
 
@@ -52,7 +52,7 @@ Use the port your Next.js dev server actually runs on.
 | Justification | `#justification` | Poor glycemic control despite first-line therapy… |
 | Submit | `#submit-prior-auth` | — |
 
-Full list + API examples: [`mock/healthfirst-portal.json`](../../mock/healthfirst-portal.json)
+Full list + API examples: [`fixtures/healthfirst-portal.json`](../../fixtures/healthfirst-portal.json)
 
 ---
 
@@ -94,7 +94,7 @@ Today these live in `apps/web` as a **simulated** agent. Teammate can either:
 
 When `DEMO_FIXTURE_MODE=true`, skip live Rtrvr and return canned receipt `PA-2026-00451`.
 
-Demo payload source: `mock/healthfirst-case.json` and `apps/web/src/lib/demo-case.ts`.
+Demo payload source: `fixtures/healthfirst-case.json` and `apps/web/src/lib/demo-case.ts`.
 
 ---
 
@@ -117,8 +117,8 @@ curl -X POST http://localhost:3000/api/pa/PA-2026-00451/adjudicate \
 | File | Purpose |
 |------|---------|
 | [docs/healthfirst-portal-handoff.md](../../docs/healthfirst-portal-handoff.md) | **Start here** — URLs, form, API, flow |
-| [mock/healthfirst-portal.json](../../mock/healthfirst-portal.json) | Machine-readable selectors + API |
-| [mock/healthfirst-case.json](../../mock/healthfirst-case.json) | Sarah Martinez demo data |
+| [fixtures/healthfirst-portal.json](../../fixtures/healthfirst-portal.json) | Machine-readable selectors + API |
+| [fixtures/healthfirst-case.json](../../fixtures/healthfirst-case.json) | Sarah Martinez demo data |
 | [spec.md](../../spec.md) | Features + acceptance criteria |
 | [architecture.md](../../architecture.md) | System design |
 | [docs/insforge.md](../../docs/insforge.md) | Database tables |

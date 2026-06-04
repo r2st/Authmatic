@@ -1,0 +1,51 @@
+# Render blueprint (ticket 0020). Env values are stubs — set real secrets in
+# the Render dashboard or via a secret group, never commit them (ticket 0023).
+services:
+  - type: web
+    name: authmatic-web
+    runtime: docker
+    dockerfilePath: ./apps/web/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/readyz
+    autoDeploy: false
+    envVars:
+      - key: AUTHMATIC_ENV
+        value: production
+      - key: NODE_ENV
+        value: production
+      - key: AGENT_BASE_URL
+        fromService:
+          type: pserv
+          name: authmatic-agent
+          property: hostport
+      - key: INSFORGE_PROJECT_URL
+        sync: false
+      - key: INSFORGE_API_KEY
+        sync: false
+      - key: TIGRIS_ACCESS_KEY_ID
+        sync: false
+      - key: TIGRIS_SECRET_ACCESS_KEY
+        sync: false
+      - key: TIGRIS_BUCKET
+        sync: false
+
+  - type: pserv
+    name: authmatic-agent
+    runtime: docker
+    dockerfilePath: ./apps/agent/Dockerfile
+    dockerContext: .
+    healthCheckPath: /readyz
+    autoDeploy: false
+    envVars:
+      - key: AUTHMATIC_ENV
+        value: production
+      - key: INSFORGE_DB_URL
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: DAYTONA_API_KEY
+        sync: false
+      - key: RTRVR_API_KEY
+        sync: false
+      - key: OPSERA_TOKEN
+        sync: false

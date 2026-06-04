@@ -1,13 +1,24 @@
+import { NextResponse } from "next/server";
 import { defaultPayload, isPipelineRunning, runAgentPipeline } from "@/lib/agent-orchestrator";
 import { getRun } from "@/lib/agent-runs";
+import { denyIfNotOwner, getServerSession, unauthorized } from "@/lib/auth/server";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const session = await getServerSession();
+  if (!session) return unauthorized();
+
   const { id } = await params;
   const existing = getRun(id);
-  const formPayload = existing?.form_payload ?? defaultPayload();
+  if (!existing) {
+    return NextResponse.json({ error: "Run not found" }, { status: 404 });
+  }
+  const denied = await denyIfNotOwner(session, "run", id, existing.clinic_id);
+  if (denied) return denied;
+
+  const formPayload = existing.form_payload ?? defaultPayload();
 
   const stream = new ReadableStream({
     async start(controller) {

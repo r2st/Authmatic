@@ -10,16 +10,16 @@ import {
   type ReactNode,
 } from "react";
 import {
-  getSession,
-  login as doLogin,
-  logout as doLogout,
+  fetchSession,
+  loginRequest,
+  logoutRequest,
   type ClinicUser,
 } from "@/lib/auth";
 
 type AuthContextValue = {
   user: ClinicUser | null;
   ready: boolean;
-  login: (email: string, password: string) => boolean;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
 };
 
@@ -34,8 +34,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    setUser(getSession());
-    setReady(true);
+    let active = true;
+    fetchSession().then((u) => {
+      if (!active) return;
+      setUser(u);
+      setReady(true);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -50,8 +57,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, ready, pathname, router]);
 
-  const login = useCallback((email: string, password: string) => {
-    const u = doLogin(email, password);
+  const login = useCallback(async (email: string, password: string) => {
+    const u = await loginRequest(email, password);
     if (u) {
       setUser(u);
       return true;
@@ -60,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    doLogout();
+    void logoutRequest();
     setUser(null);
     router.push("/login");
   }, [router]);

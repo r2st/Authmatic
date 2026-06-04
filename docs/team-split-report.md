@@ -56,7 +56,7 @@ cd apps/web && npm run dev   # note the port (often 3001)
 | **Clinic** | Bay Area Primary Care — Emily Chen, MD, Oakland |
 | **Rx** | Ozempic 0.25mg weekly + step-therapy justification |
 | **PDFs** | `assets/demo/patient_chart_sarah_martinez.pdf`, `prescription_ozempic_martinez.pdf` |
-| **Fixture** | `mock/healthfirst-case.json` |
+| **Fixture** | `fixtures/healthfirst-case.json` |
 
 ---
 
@@ -101,8 +101,8 @@ Adjudication rules: `apps/web/src/lib/adjudication.ts`
 1. `apps/web/src/lib/agent-orchestrator.ts` — **match this step shape**
 2. `apps/web/src/lib/agent-runs.ts` — run/step types
 3. `docs/healthfirst-portal-handoff.md` — portal URLs + API
-4. `mock/healthfirst-portal.json` — Rtrvr selectors
-5. `mock/healthfirst-case.json` — expected extracted fields
+4. `fixtures/healthfirst-portal.json` — Rtrvr selectors
+5. `fixtures/healthfirst-case.json` — expected extracted fields
 
 ---
 
@@ -211,7 +211,7 @@ Copy field names from `apps/web/src/lib/agent-runs.ts` → `AgentStep`, `AgentRu
 }
 ```
 
-**Fallback:** if Daytona fails or `DEMO_FIXTURE_MODE=true`, use `mock/healthfirst-case.json`.
+**Fallback:** if Daytona fails or `DEMO_FIXTURE_MODE=true`, use `fixtures/healthfirst-case.json`.
 
 Emit SSE step 1 with `tool_output` = extracted payload.
 
@@ -398,8 +398,8 @@ Either way: **keep `/run/[id]` and portal routes unchanged.**
 | File | Purpose |
 |------|---------|
 | [docs/healthfirst-portal-handoff.md](./healthfirst-portal-handoff.md) | Portal URLs, selectors, API examples |
-| [mock/healthfirst-portal.json](../mock/healthfirst-portal.json) | Machine-readable Rtrvr spec |
-| [mock/healthfirst-case.json](../mock/healthfirst-case.json) | Demo patient fixture |
+| [fixtures/healthfirst-portal.json](../fixtures/healthfirst-portal.json) | Machine-readable Rtrvr spec |
+| [fixtures/healthfirst-case.json](../fixtures/healthfirst-case.json) | Demo patient fixture |
 | [apps/agent/README.md](../apps/agent/README.md) | Teammate quick reference |
 | [docs/insforge.md](./insforge.md) | DB schema + InsForge setup |
 | [docs/tigris.md](./tigris.md) | File storage setup |

@@ -20,6 +20,15 @@ function formDataToPayload(form: FormData): PaFormPayload {
   };
 }
 
+/**
+ * PUBLIC by design — payer-portal intake. This is the simulated HealthFirst
+ * form that a clinic (or the Rtrvr agent, headless) fills and submits. The
+ * Rtrvr browser session carries no clinic cookie, so this route cannot
+ * require an Authmatic session. Submissions land with no clinic owner
+ * (clinic_id null) — the payer intake doesn't know which Authmatic tenant
+ * sent them. Controls: rate limiting (0012). See ticket 0005 Log for the
+ * payer-vs-clinic boundary rationale.
+ */
 export async function POST(request: NextRequest) {
   const contentType = request.headers.get("content-type") ?? "";
   let payload: PaFormPayload;

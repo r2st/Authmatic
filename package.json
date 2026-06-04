@@ -2,13 +2,14 @@
   "name": "authmatic",
   "version": "0.1.0",
   "private": true,
-  "description": "An autonomous agent that files prior authorizations on real payer portals — Applied Intelligence Hackathon, 31 May 2026",
+  "description": "Autonomous agent that files prior authorizations on real payer portals.",
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -n web,agent -c blue,magenta \"pnpm --filter web dev\" \"cd apps/agent && .venv/bin/uvicorn main:app --reload --port 8000\"",
-    "build": "pnpm --filter web build",
+    "dev": "concurrently -n web,agent -c blue,magenta \"pnpm --filter authmatic-web dev\" \"cd apps/agent && .venv/bin/uvicorn main:app --reload --port 8000\"",
+    "build": "pnpm --filter authmatic-web build",
     "smoke": "bash scripts/smoke.sh",
     "seed": "bash scripts/seed.sh",
     "reset": "bash scripts/reset.sh"

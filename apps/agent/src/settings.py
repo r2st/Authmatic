@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # be the payer's confirmation URL, not ours.
     web_base_url: str = "http://localhost:3000"
 
+    # Environment (ticket 0019): development | staging | production.
+    authmatic_env: str = "development"
+
     # Demo
     demo_fixture_mode: bool = False
     fixtures_path: str = os.environ.get(
@@ -52,7 +55,20 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    @property
+    def is_production(self) -> bool:
+        return self.authmatic_env.lower() == "production"
+
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def assert_safe_for_production(s: Settings) -> None:
+    """Fail fast if demo shortcuts are enabled in production (ticket 0019)."""
+    if s.is_production and s.demo_fixture_mode:
+        raise RuntimeError(
+            "Refusing to start: DEMO_FIXTURE_MODE is on in production. "
+            "It replays fixtures instead of processing real input."
+        )
