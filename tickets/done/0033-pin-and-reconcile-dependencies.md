@@ -46,6 +46,8 @@ with whoever touches [[0020]] (deploy manifests).
 
 ## Log
 
+- 2026-06-03 (claude): grype critical/high triage (from the pre-commit scan that showed 6 critical / 28 high). Found 33 of 34 were the @esbuild dev/build binary (Go stdlib CVEs) — NOT in the production image; added .grype.yaml to ignore them with a documented reason (65 noise matches dropped → scan now shows 1 critical + 1 high, the real signal). Remaining: (1) vitest@2.1.9 CRITICAL GHSA-5xrq-8626-4rwp — dev-only test runner, not shipped; fix is vitest 4.x (major, would break test config) — recommend bumping when test compat is verified. (2) starlette@0.46.2 HIGH GHSA-7f5h-v6xp-fcq8 (multipart DoS — relevant: agent accepts PDF uploads) — the ONE shipped CVE; cannot bump minimally because FastAPI 0.115 pins starlette<0.47, so the fix requires fastapi 0.115->0.136 + starlette 0.46->1.x (a major framework jump incl. sse-starlette compat) that MUST be done with the agent runnable + integration-tested. NOT blind-applied. Recommend a dedicated P1 ticket for the FastAPI/starlette upgrade.
+
 ## Outcome
 
 ## Log

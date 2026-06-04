@@ -1,0 +1,9 @@
+# grype config (ticket 0033). Ignore the esbuild dev/build binary's bundled
+# Go stdlib CVEs — esbuild is a vite/vitest build tool, NOT in the production
+# image (.dockerignore drops node_modules; Next standalone excludes it). Not a
+# runtime risk and not directly patchable by us (clears via vite/vitest bumps).
+# Real app + runtime dependency CVEs are still reported.
+ignore:
+  - reason: "esbuild dev/build binary, not in production image"
+    package:
+      location: "**/@esbuild/**"
