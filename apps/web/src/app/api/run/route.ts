@@ -1,12 +1,8 @@
-import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { defaultPayload, runAgentPipeline } from "@/lib/agent-orchestrator";
-import { createRun } from "@/lib/agent-runs";
-import { BATCH_DEMO_IDS, DEMO_CASES, getDemoCase, LIVE_BATCH_IDS, type DemoCaseId } from "@/lib/demo-cases";
-import { createBatch } from "@/lib/batch-runs";
+import { BATCH_DEMO_IDS, DEMO_CASES, getDemoCase, getDemoFormPayload, LIVE_BATCH_IDS, type DemoCaseId } from "@/lib/demo-cases";
 import { getServerSession, unauthorized } from "@/lib/auth/server";
 import { hashBody, lookupIdempotency, saveIdempotency } from "@/lib/idempotency";
-import { isPythonAgentEnabled, proxyRun } from "@/lib/agent-proxy";
+import { proxyRun } from "@/lib/agent-proxy";
 
 function parseCaseId(raw: unknown): DemoCaseId | undefined {
   if (typeof raw !== "string" || !(raw in DEMO_CASES)) return undefined;
@@ -18,47 +14,43 @@ export async function POST(request: Request) {
   const session = await getServerSession();
   if (!session) return unauthorized();
 
-  const runId = randomUUID();
   const requestId = request.headers.get("x-request-id") ?? undefined;
   const contentType = request.headers.get("content-type") ?? "";
 
-  let demo = true;
   let caseId: DemoCaseId | undefined;
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
     const chart = form.get("chart");
-    // Canonical path (ticket 0025/0029): a real uploaded chart goes to the
-    // Python agent, which extracts the ACTUAL document — never a caseId
-    // fixture. Returns the agent's queued run id.
-    if (isPythonAgentEnabled() && chart instanceof Blob) {
+
+    // All uploaded charts go to the Python agent for real extraction.
+    if (chart instanceof Blob) {
       const filename = (chart as File).name || "chart.pdf";
       const result = await proxyRun(chart, filename, session.clinic_id, requestId);
       return NextResponse.json({ ...result, demo: false, via: "python-agent" });
     }
-    demo = form.get("demo") === "true" || !chart;
+
+    // No chart uploaded — use a demo case to seed the agent
     caseId = parseCaseId(form.get("case_id"));
   } else if (contentType.includes("application/json")) {
     const body = (await request.json().catch(() => ({}))) as {
-      demo?: boolean;
       case_id?: string;
       batch?: boolean;
       case_ids?: string[];
     };
 
     if (body.batch && Array.isArray(body.case_ids)) {
-      return startBatch(body.case_ids, session.clinic_id);
+      return startBatch(body.case_ids, session.clinic_id, requestId);
     }
 
-    demo = body.demo !== false;
     caseId = parseCaseId(body.case_id);
   }
 
   // Idempotency (ticket 0017): a double-clicked "Run" with the same
   // Idempotency-Key + same intent returns the original run instead of
-  // starting a second agent loop (two Rtrvr submissions). Scoped per clinic.
+  // starting a second agent loop. Scoped per clinic.
   const idemKey = request.headers.get("Idempotency-Key");
-  const idemFingerprint = hashBody({ caseId: caseId ?? null, demo });
+  const idemFingerprint = hashBody({ caseId: caseId ?? null });
   if (idemKey) {
     const prior = lookupIdempotency(idemKey, session.clinic_id, idemFingerprint);
     if (prior.kind === "conflict") {
@@ -72,46 +64,44 @@ export async function POST(request: Request) {
     }
   }
 
-  const form_payload = defaultPayload(caseId);
-  createRun(runId, form_payload, caseId, session.clinic_id);
-
-  void runAgentPipeline(runId, form_payload, () => {}, { caseId });
-
+  // Build a synthetic PDF from the demo case payload and send it to the
+  // Python agent. If no chart is available, proxy with an empty blob so
+  // the agent can still seed from its own demo fixture data.
   const demoCase = getDemoCase(caseId);
+  const payload = getDemoFormPayload(caseId);
+  const syntheticBlob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+  const result = await proxyRun(syntheticBlob, "demo-case.json", session.clinic_id, requestId);
 
   const responseBody = {
-    run_id: runId,
+    ...result,
     case_id: caseId ?? "sarah-martinez",
-    demo,
-    message: demo
-      ? `Demo run started — ${demoCase.title}: ${demoCase.payload.patient_name}`
-      : "Run started",
+    demo: true,
+    via: "python-agent",
+    message: `Demo run started — ${demoCase.title}: ${demoCase.payload.patient_name}`,
   };
   if (idemKey) saveIdempotency(idemKey, session.clinic_id, idemFingerprint, 200, responseBody);
   return NextResponse.json(responseBody);
 }
 
-function startBatch(caseIds: string[], clinicId: string) {
-  const batchId = randomUUID();
+async function startBatch(caseIds: string[], clinicId: string, requestId?: string) {
   const validIds = caseIds.filter((id) => id in DEMO_CASES) as DemoCaseId[];
   const ids = validIds.length ? validIds : LIVE_BATCH_IDS;
 
-  const runIds = ids.map(() => randomUUID());
-
-  ids.forEach((caseId, i) => {
-    const runId = runIds[i];
-    const form_payload = defaultPayload(caseId);
-    createRun(runId, form_payload, caseId, clinicId);
-    void runAgentPipeline(runId, form_payload, () => {}, { caseId });
-  });
-
-  createBatch(batchId, ids, runIds, clinicId);
+  const results = await Promise.all(
+    ids.map(async (caseId) => {
+      const payload = getDemoFormPayload(caseId);
+      const syntheticBlob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+      const result = await proxyRun(syntheticBlob, `demo-${caseId}.json`, clinicId, requestId);
+      return { case_id: caseId, ...result };
+    })
+  );
 
   return NextResponse.json({
-    batch_id: batchId,
-    run_ids: runIds,
+    run_ids: results.map((r) => r.run_id),
     case_ids: ids,
+    via: "python-agent",
     message: `Batch started — ${ids.length} patients in parallel`,
+    runs: results,
   });
 }
 

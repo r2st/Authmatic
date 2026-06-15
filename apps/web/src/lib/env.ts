@@ -4,6 +4,9 @@
  * `AUTHMATIC_ENV` (development | staging | production) is the source of
  * truth; falls back to NODE_ENV. Demo/fixture shortcuts must never run in
  * production — `assertSafeForProduction()` fails fast at startup if they do.
+ *
+ * `USE_PYTHON_AGENT` has been removed — the Python agent is now the only
+ * execution path (ticket 0025 finalized).
  */
 
 function boolEnv(v: string | undefined): boolean {
@@ -21,7 +24,6 @@ export const IS_PRODUCTION = APP_ENV === "production";
 
 export const DEMO_FIXTURE_MODE = boolEnv(process.env.DEMO_FIXTURE_MODE);
 export const USE_INPROCESS_AGENT = boolEnv(process.env.USE_INPROCESS_AGENT);
-export const USE_PYTHON_AGENT = boolEnv(process.env.USE_PYTHON_AGENT);
 
 export const APP_VERSION =
   process.env.GIT_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "dev";

@@ -15,7 +15,8 @@ export async function GET() {
   } catch (err) {
     return to503(err);
   }
-  const runs = listRuns(10, session.clinic_id);
+
+  const runs = await listRuns(10, session.clinic_id);
 
   const approved = submissions.filter((s) => s.status === "approved").length;
   const pending = submissions.filter(

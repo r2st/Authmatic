@@ -22,28 +22,37 @@
  */
 import { getInsForgeAdmin } from "./admin";
 import type { ClinicSession } from "../auth/session";
+import { isPgConfigured, scopedQuery } from "../db";
+import type { QueryResultRow } from "pg";
 
 export interface ScopedClient {
-  /** The InsForge database client. */
+  /** The InsForge database client (storage / non-tenant ops). */
   db: ReturnType<typeof getInsForgeAdmin>["database"];
-  /** The clinic this client is scoped to (for SET app.clinic_id / JWT claim). */
+  /** The clinic this client is scoped to. */
   clinicId: string;
+  /**
+   * RLS-enforced tenant query (ticket 0034). Runs as the non-privileged
+   * `authmatic_app` role with `app.clinic_id` set, so the database limits
+   * rows to this clinic regardless of the SQL. Use this for every
+   * user-driven read/write of PHI tables. Requires a direct-pg connection
+   * (APP_DATABASE_URL / INSFORGE_DB_URL); `pgEnforced` tells you if it's live.
+   */
+  query<R extends QueryResultRow = QueryResultRow>(sql: string, params?: unknown[]): Promise<R[]>;
+  /** True when RLS is enforced at the DB (direct-pg configured), not just app-layer. */
+  pgEnforced: boolean;
 }
 
 export function getInsForgeClient(session: ClinicSession): ScopedClient {
-  // RLS enforcement is VERIFIED at the DB layer (ticket 0034): with
-  // `0010_force_rls.sql` (FORCE RLS) + `0011_add_app_role.sql` (non-superuser
-  // `authmatic_app`), a connection that `SET app.clinic_id = <clinic>` sees
-  // only its own clinic's rows — proven against a real Postgres (cross-tenant
-  // read returns 0). The remaining work is the DATA LAYER: the InsForge SDK is
-  // HTTP and cannot set the GUC, so wiring this requires either (a) an InsForge
-  // Auth JWT whose claim maps to auth.clinic_id(), or (b) a direct pg pool
-  // connecting as `authmatic_app` and setting the GUC per request. Neither is
-  // exercisable without the live InsForge backend / a new pg data layer, so
-  // this still returns the admin client and app-layer ownership checks (0005)
-  // remain the enforced control. See ADR 0007.
+  // RLS is now enforced at runtime via the direct-pg scoped client (db.ts):
+  // `query()` runs as `authmatic_app` with `SET app.clinic_id`, so the DB
+  // limits rows to this clinic. VERIFIED against Postgres (db-rls test): a
+  // clinic-B query for a clinic-A row returns 0. Migrate user-driven PHI reads
+  // from the admin SDK to `.query()` to make the DB the enforced control;
+  // app-layer checks (0005) cover anything still on the SDK. See ADR 0007.
   return {
     db: getInsForgeAdmin().database,
     clinicId: session.clinic_id,
+    pgEnforced: isPgConfigured(),
+    query: (sql, params = []) => scopedQuery(session.clinic_id, sql, params),
   };
 }

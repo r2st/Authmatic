@@ -20,9 +20,9 @@ export async function GET(
   const denied = await denyIfNotOwner(session, "batch", id, batch.clinic_id);
   if (denied) return denied;
 
-  const runs = batch.run_ids
-    .map((runId) => getRun(runId))
-    .filter((r): r is NonNullable<typeof r> => Boolean(r));
+  const runs = (
+    await Promise.all(batch.run_ids.map((runId) => getRun(runId)))
+  ).filter((r): r is NonNullable<typeof r> => Boolean(r));
 
   const completed = runs.filter((r) => r.status === "completed").length;
   const failed = runs.filter((r) => r.status === "error").length;

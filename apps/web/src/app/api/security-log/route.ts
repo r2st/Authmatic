@@ -30,7 +30,9 @@ export async function GET() {
 
   const events: SecurityEvent[] = [...SEED];
 
-  for (const run of listRuns(25, session.clinic_id)) {
+  const runs = await listRuns(25, session.clinic_id);
+
+  for (const run of runs) {
     const verify = run.steps.find((s) => s.verb === "VERIFY");
     if (verify) {
       const out = verify.tool_output as {

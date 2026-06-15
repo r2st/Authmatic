@@ -1,10 +1,8 @@
 /**
  * Proxy to the canonical Python agent service (ticket 0025, ADR 0013).
  *
- * The Python ReAct agent (`apps/agent/`) is the canonical implementation; the
- * scripted `agent-orchestrator.ts` is a demo-only fallback. When
- * `USE_PYTHON_AGENT` is on, `/api/run` and `/api/stream` route here instead of
- * the scripted pipeline.
+ * The Python ReAct agent (`apps/agent/`) is the sole agent implementation.
+ * All `/api/run` and `/api/stream` traffic routes through these helpers.
  *
  * Service-to-service auth uses `AGENT_SERVICE_TOKEN` (ticket 0005). The
  * `X-Request-ID` is forwarded for distributed tracing (ticket 0021).
@@ -12,10 +10,6 @@
  * Server-only.
  */
 import { log } from "./logging";
-
-export function isPythonAgentEnabled(): boolean {
-  return (process.env.USE_PYTHON_AGENT ?? "").toLowerCase() === "true";
-}
 
 function agentBaseUrl(): string {
   return (process.env.AGENT_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");

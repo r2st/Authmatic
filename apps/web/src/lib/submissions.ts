@@ -9,6 +9,18 @@ import { auditLog } from "./audit";
 import { newReferenceId } from "./reference-id";
 import { isDemoFixtureMode } from "./demo-mode";
 import { log } from "./logging";
+import { isPgConfigured } from "./db";
+import {
+  pgCreateSubmission,
+  pgGetSubmission,
+  pgListSubmissions,
+  pgUpdateSubmission,
+} from "./submissions-pg";
+
+/** Prefer the durable direct-pg path when configured and the SDK is not. */
+function usePg(): boolean {
+  return isPgConfigured() && !isInsForgeConfigured();
+}
 
 type DbRow = PaSubmissionRow;
 
@@ -128,6 +140,18 @@ export async function createSubmission(
 
   void auditLog({ action: "create", resource: "pa_submission", resource_id: reference_id, actor_clinic: clinic_id });
 
+  // Durable direct-pg path (db.ts) — used when pg is configured but the
+  // InsForge SDK isn't (local dev, and the durable replacement for the
+  // in-memory fallback, tickets 0016/0028).
+  if (usePg()) {
+    try {
+      return await pgCreateSubmission(submission);
+    } catch (err) {
+      log.error("submission.create_failed", { reference_id, error: err instanceof Error ? err.message : String(err) });
+      throw new PersistenceError("Failed to persist submission");
+    }
+  }
+
   if (!isInsForgeConfigured()) {
     if (memoryAllowed()) return saveLocal(submission);
     throw new PersistenceError("Persistence unavailable: InsForge not configured");
@@ -158,6 +182,15 @@ export async function getSubmission(reference_id: string): Promise<PaSubmission 
   // Audit every read of a PHI resource (ADR 0008). Actor identity is
   // threaded from the session by ticket 0005; null until then.
   void auditLog({ action: "read", resource: "pa_submission", resource_id: reference_id });
+
+  if (usePg()) {
+    try {
+      return await pgGetSubmission(reference_id);
+    } catch (err) {
+      log.error("submission.read_failed", { reference_id, error: err instanceof Error ? err.message : String(err) });
+      throw new PersistenceError("Failed to read submission");
+    }
+  }
 
   if (memoryAllowed() && memory.has(reference_id)) {
     return memory.get(reference_id) ?? null;
@@ -203,6 +236,15 @@ export async function updateSubmission(
     assertTransition(current.status, clean.status);
   }
 
+  if (usePg()) {
+    try {
+      return await pgUpdateSubmission(reference_id, clean as Record<string, unknown>);
+    } catch (err) {
+      log.error("submission.update_failed", { reference_id, error: err instanceof Error ? err.message : String(err) });
+      throw new PersistenceError("Failed to update submission");
+    }
+  }
+
   if (memoryAllowed()) {
     const local = memory.get(reference_id);
     if (local) {
@@ -239,6 +281,15 @@ export async function updateSubmission(
 
 /** List submissions, scoped to one clinic when `clinic_id` is given (tenancy). */
 export async function listSubmissions(limit = 20, clinic_id?: string): Promise<PaSubmission[]> {
+  if (usePg()) {
+    try {
+      return await pgListSubmissions(limit, clinic_id);
+    } catch (err) {
+      log.error("submission.list_failed", { error: err instanceof Error ? err.message : String(err) });
+      throw new PersistenceError("Failed to list submissions");
+    }
+  }
+
   if (isInsForgeConfigured()) {
     try {
       const insforge = getInsForgeAdmin();
