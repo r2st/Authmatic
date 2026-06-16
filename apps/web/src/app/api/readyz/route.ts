@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { HeadBucketCommand } from "@aws-sdk/client-s3";
 import { APP_ENV, APP_VERSION } from "@/lib/env";
+import { isPgConfigured, adminQuery } from "@/lib/db";
 import { getInsForgeAdmin, isInsForgeConfigured } from "@/lib/insforge/admin";
 import {
   getTigrisClient,
@@ -39,6 +40,19 @@ async function checkInsForge(): Promise<DepState> {
   }
 }
 
+async function checkPostgres(): Promise<DepState> {
+  if (!isPgConfigured()) return "not_configured";
+  try {
+    const rows = await withTimeout(
+      adminQuery<{ ok: number }>("SELECT 1 as ok"),
+      2500
+    );
+    return rows.length && rows[0].ok === 1 ? "ok" : "down";
+  } catch {
+    return "down";
+  }
+}
+
 async function checkTigris(): Promise<DepState> {
   if (!isTigrisConfigured()) return "not_configured";
   try {
@@ -57,8 +71,12 @@ async function checkTigris(): Promise<DepState> {
  * the load balancer stops routing traffic to a running-but-broken instance.
  */
 export async function GET() {
-  const [insforge, tigris] = await Promise.all([checkInsForge(), checkTigris()]);
-  const deps = { insforge, tigris };
+  const [insforge, tigris, postgres] = await Promise.all([
+    checkInsForge(),
+    checkTigris(),
+    checkPostgres(),
+  ]);
+  const deps = { insforge, tigris, postgres };
   const down = Object.values(deps).some((s) => s === "down");
 
   return NextResponse.json(

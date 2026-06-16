@@ -74,6 +74,7 @@ const ALLOWED_TRANSITIONS: Record<PaStatus, readonly PaStatus[]> = {
   needs_info: ["under_review", "pending_review", "approved", "denied"],
   approved: [],
   denied: [],
+  submitted: [], // terminal (legacy agent path)
 };
 
 export class InvalidSubmissionPatchError extends Error {}
@@ -178,14 +179,14 @@ export async function createSubmission(
   }
 }
 
-export async function getSubmission(reference_id: string): Promise<PaSubmission | null> {
+export async function getSubmission(reference_id: string, clinic_id?: string): Promise<PaSubmission | null> {
   // Audit every read of a PHI resource (ADR 0008). Actor identity is
   // threaded from the session by ticket 0005; null until then.
-  void auditLog({ action: "read", resource: "pa_submission", resource_id: reference_id });
+  void auditLog({ action: "read", resource: "pa_submission", resource_id: reference_id, actor_clinic: clinic_id });
 
   if (usePg()) {
     try {
-      return await pgGetSubmission(reference_id);
+      return await pgGetSubmission(reference_id, clinic_id);
     } catch (err) {
       log.error("submission.read_failed", { reference_id, error: err instanceof Error ? err.message : String(err) });
       throw new PersistenceError("Failed to read submission");
@@ -223,14 +224,15 @@ export async function getSubmission(reference_id: string): Promise<PaSubmission 
 
 export async function updateSubmission(
   reference_id: string,
-  patch: SubmissionPatch
+  patch: SubmissionPatch,
+  clinic_id?: string
 ): Promise<PaSubmission | null> {
   // Drop any non-allowlisted keys before they can reach the DB (ticket 0018).
   const clean = sanitizePatch(patch);
 
   // Validate the status transition against the current record. Throws
   // InvalidSubmissionPatchError on an illegal move (callers map to 422).
-  const current = await getSubmission(reference_id);
+  const current = await getSubmission(reference_id, clinic_id);
   if (!current) return null;
   if (clean.status !== undefined) {
     assertTransition(current.status, clean.status);
@@ -238,7 +240,7 @@ export async function updateSubmission(
 
   if (usePg()) {
     try {
-      return await pgUpdateSubmission(reference_id, clean as Record<string, unknown>);
+      return await pgUpdateSubmission(reference_id, clean as Record<string, unknown>, clinic_id);
     } catch (err) {
       log.error("submission.update_failed", { reference_id, error: err instanceof Error ? err.message : String(err) });
       throw new PersistenceError("Failed to update submission");

@@ -55,12 +55,21 @@ cookies, not InsForge Auth JWTs. Two ways to close this (follow-up ticket):
    our custom sessions; needs a dedicated pool (the InsForge SDK's pooled
    HTTP client doesn't expose per-request `SET`).
 
-Neither is exercisable without the live InsForge backend, so
-`getInsForgeClient()` currently delegates to admin while recording the
-intended scope, and **app-layer checks (0005) are the enforced control**.
-The manual `clinic_id` filtering in `submissions.ts` is deliberately
-**kept** (not removed as the ticket suggested) until RLS is the live,
-verified path — removing it now would drop enforcement to zero.
+**UPDATE (ticket 0034, VERIFIED runtime enforcement):** option 2 is now
+implemented + proven. `apps/web/src/lib/db.ts` is a direct-pg layer that
+connects as the non-superuser `authmatic_app` role (migration 0011) and runs
+each tenant query inside a transaction with `SELECT set_config('app.clinic_id',
+…, true)` (SET LOCAL). With `FORCE ROW LEVEL SECURITY` (migration 0010), the
+DB enforces isolation: the `db-rls` test proves a clinic-B-scoped query for a
+clinic-A row returns **0 rows** with no `WHERE clinic_id` — run against a real
+Postgres. `getInsForgeClient(session).query()` exposes this; `pgEnforced`
+reports whether the direct-pg path is configured.
+
+**Remaining (incremental):** migrate each user-driven PHI read/write from the
+admin SDK to `.query()`. Until a given consumer is migrated, app-layer checks
+(0005) remain its enforced control, so manual `clinic_id` filtering in
+`submissions.ts` stays for now. The agent (`apps/agent`) likewise sets
+`app.clinic_id` once it moves to the scoped role.
 
 ## Consequences
 

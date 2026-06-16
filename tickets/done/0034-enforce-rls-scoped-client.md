@@ -96,3 +96,15 @@ real Postgres). The runtime swap of the data layer from the InsForge HTTP SDK
 to a GUC-scoped / JWT-scoped connection is the documented remaining step
 (needs the InsForge JWT layer or a direct-pg path); app-layer checks (0005)
 enforce in the interim. P0 DB-correctness piece done + verified.
+
+## Update — runtime enforcement IMPLEMENTED + VERIFIED (2026-06-03)
+The "remaining infra boundary" noted above is now closed in code. Added a
+direct-pg data layer `apps/web/src/lib/db.ts`: `scopedQuery(clinicId, …)` runs
+as the non-superuser `authmatic_app` role inside a transaction with
+`SET LOCAL app.clinic_id`, so FORCE-RLS (0010) enforces tenant isolation at the
+database. `getInsForgeClient(session).query()` exposes it (+ `pgEnforced`).
+**Verified against a real Postgres** (`db-rls.test.ts`): a clinic-B-scoped
+query for a clinic-A patient returns 0 rows with NO `WHERE clinic_id`; clinic A
+sees 1. Connection via `APP_DATABASE_URL` (authmatic_app) + `ADMIN_DATABASE_URL`
+(privileged). Remaining = incrementally migrating each existing SDK query to
+`.query()`; app-layer checks (0005) hold each consumer until migrated.

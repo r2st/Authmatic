@@ -10,7 +10,7 @@
 substring hits against a 21-word `STEP_THERAPY_KEYWORDS` list and a
 hardcoded formulary array, stamping hardcoded reviewer IDs
 (`HF-MCR-8842`, `HF-REV-DEMO`). It is invoked inline from the agent run
-(`agent-orchestrator.ts`) as if it were a real payer decision.
+(formerly `agent-orchestrator.ts`, now deleted; the Python agent in `apps/agent/` via `agent-proxy.ts`) as if it were a real payer decision.
 
 Two defects made this dangerous:
 

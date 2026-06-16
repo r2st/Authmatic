@@ -14,7 +14,7 @@ Everything your teammate needs to wire **Rtrvr**, **FastAPI agent**, and sponsor
 | Mock HealthFirst UI (form + status pages) | You | `apps/web/src/app/portal/healthfirst/` |
 | Form field IDs + submit button | You | `apps/web/src/components/portal/PriorAuthForm.tsx` |
 | Submit + status + adjudicate APIs | You | `apps/web/src/app/api/pa/` |
-| Demo run UI + SSE stream (simulated agent) | You | `apps/web/src/app/run/[id]/`, `apps/web/src/lib/agent-orchestrator.ts` |
+| Demo run UI + SSE stream (agent proxy) | You | `apps/web/src/app/run/[id]/`, `apps/web/src/lib/agent-proxy.ts` |
 | InsForge + Tigris wiring | You | `apps/web/src/lib/submissions.ts`, `docs/insforge.md` |
 
 **Teammate builds:** `apps/agent/` — real FastAPI agent, Rtrvr browser automation, Daytona PDF extract, Opsera verify, InsForge persist from agent side.
@@ -292,7 +292,7 @@ Or from home: **Run demo — Sarah Martinez / Ozempic** → `/run/{id}` shows ag
 
 | Current (demo/simulated) | Teammate (real) |
 |--------------------------|-----------------|
-| `agent-orchestrator.ts` simulated steps | FastAPI agent in `apps/agent/` |
+| ~~`agent-orchestrator.ts`~~ (deleted) | FastAPI agent in `apps/agent/`, proxied via `agent-proxy.ts` |
 | Client autofill `?autofill=1` | Rtrvr browser automation |
 | In-process SSE in Next.js | Agent SSE from FastAPI (or proxy through web) |
 | `DEMO_FIXTURE_MODE=true` fallback | Live PDF extract + live Rtrvr |

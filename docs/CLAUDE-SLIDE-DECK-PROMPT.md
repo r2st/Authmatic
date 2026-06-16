@@ -20,7 +20,7 @@ Create a **10–12 slide** pitch deck for **Authmatic**, a healthcare hackathon 
 The repo combines **two stacks** (both present on `main`):
 
 ### A. Live demo path (what judges see) — Next.js in-process agent
-`apps/web` — 5-step pipeline in `agent-orchestrator.ts`:
+`apps/agent/` — Python ReAct loop (formerly scripted in the now-deleted `agent-orchestrator.ts`; web proxies via `agent-proxy.ts`):
 
 | Step | Sponsor | Code | What it does |
 |------|---------|------|--------------|
