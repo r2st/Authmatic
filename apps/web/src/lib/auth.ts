@@ -1,3 +1,9 @@
+/**
+ * Client-side auth helpers (ticket 0005). The session lives in an httpOnly
+ * cookie validated server-side — it is NOT readable from JS. These helpers
+ * just talk to the auth API. No passwords, no DEMO_USERS, no localStorage.
+ */
+
 export type ClinicUser = {
   email: string;
   name: string;
@@ -5,51 +11,39 @@ export type ClinicUser = {
   clinic: string;
 };
 
-export const DEMO_USERS: Record<string, { password: string; user: ClinicUser }> = {
-  "emily.chen@bayarea-care.com": {
-    password: "demo123",
-    user: {
-      email: "emily.chen@bayarea-care.com",
-      name: "Emily Chen, MD",
-      role: "Provider",
-      clinic: "Bay Area Primary Care",
-    },
-  },
-  "ma@bayarea-care.com": {
-    password: "demo123",
-    user: {
-      email: "ma@bayarea-care.com",
-      name: "Sarah Kim",
-      role: "MA",
-      clinic: "Bay Area Primary Care",
-    },
-  },
-};
-
-const SESSION_KEY = "authmatic_session";
-
-export function login(email: string, password: string): ClinicUser | null {
-  const entry = DEMO_USERS[email.toLowerCase().trim()];
-  if (!entry || entry.password !== password) return null;
-  if (typeof window !== "undefined") {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(entry.user));
-  }
-  return entry.user;
-}
-
-export function logout(): void {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem(SESSION_KEY);
-  }
-}
-
-export function getSession(): ClinicUser | null {
-  if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem(SESSION_KEY);
-  if (!raw) return null;
+/** Fetch the current user from the signed session cookie. Null if signed out. */
+export async function fetchSession(): Promise<ClinicUser | null> {
   try {
-    return JSON.parse(raw) as ClinicUser;
+    const res = await fetch("/api/auth/session", { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { user: ClinicUser | null };
+    return data.user;
   } catch {
     return null;
+  }
+}
+
+/** Exchange credentials for a session cookie. Returns the user or null. */
+export async function loginRequest(email: string, password: string): Promise<ClinicUser | null> {
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { user: ClinicUser };
+    return data.user;
+  } catch {
+    return null;
+  }
+}
+
+/** Clear the session cookie. */
+export async function logoutRequest(): Promise<void> {
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } catch {
+    /* best effort */
   }
 }

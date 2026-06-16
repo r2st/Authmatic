@@ -1,10 +1,22 @@
 import { NextResponse } from "next/server";
 import { listRuns } from "@/lib/agent-runs";
 import { listSubmissions } from "@/lib/submissions";
+import { getServerSession, unauthorized } from "@/lib/auth/server";
+import { to503 } from "@/lib/persistence-response";
 
 export async function GET() {
-  const submissions = await listSubmissions(15);
-  const runs = listRuns(10);
+  const session = await getServerSession();
+  if (!session) return unauthorized();
+
+  // Scope every listing to the caller's clinic (tenancy).
+  let submissions;
+  try {
+    submissions = await listSubmissions(15, session.clinic_id);
+  } catch (err) {
+    return to503(err);
+  }
+
+  const runs = await listRuns(10, session.clinic_id);
 
   const approved = submissions.filter((s) => s.status === "approved").length;
   const pending = submissions.filter(

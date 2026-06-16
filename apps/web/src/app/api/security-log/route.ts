@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { listRuns } from "@/lib/agent-runs";
+import { getServerSession, unauthorized } from "@/lib/auth/server";
+import { redact } from "@/lib/phi";
 
 export type SecurityEvent = {
   id: string;
@@ -23,9 +25,14 @@ const SEED: SecurityEvent[] = [
 ];
 
 export async function GET() {
+  const session = await getServerSession();
+  if (!session) return unauthorized();
+
   const events: SecurityEvent[] = [...SEED];
 
-  for (const run of listRuns(25)) {
+  const runs = await listRuns(25, session.clinic_id);
+
+  for (const run of runs) {
     const verify = run.steps.find((s) => s.verb === "VERIFY");
     if (verify) {
       const out = verify.tool_output as {
@@ -41,7 +48,7 @@ export async function GET() {
         summary: out.passed
           ? `Opsera compliance passed (${out.source ?? "rules"})`
           : `Opsera blocked submit — ${out.flagged_fields?.join(", ") ?? "PHI risk"}`,
-        detail: run.form_payload.patient_name,
+        detail: redact("patient_name", run.form_payload.patient_name),
         run_id: run.id,
       });
     }

@@ -9,7 +9,7 @@ on the payer portal.
 
 from __future__ import annotations
 
-import os
+import logging
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -24,9 +24,13 @@ from .persist import (
     link_patient_by_member_id,
     update_status,
 )
+from .phi import redact_phi
 from .tools import execute, read_web, verify
+from .tools.persist import submit_to_payer
 
 MAX_ITERATIONS = 5
+
+_logger = logging.getLogger("authmatic.agent.loop")
 
 PLANNER_PROMPT = (
     Path(__file__).parent / "prompts" / "planner.txt"
@@ -59,6 +63,10 @@ async def run_agent(
     coverage_rule: dict | None = None
     rationale: str | None = None
     last_step_no = 0
+    # Identity fields are frozen from the EXECUTE (PDF parse) step. Nothing
+    # downstream — especially adversarial READ-WEB portal content — may alter
+    # them before the final SUBMIT (ticket 0014 guardrail).
+    frozen_identity: dict | None = None
 
     for step_no in range(1, MAX_ITERATIONS + 1):
         last_step_no = step_no
@@ -66,12 +74,74 @@ async def run_agent(
         verb = plan["verb"]
         args = plan.get("args", {})
 
+        # Forensic log of every planner decision (ticket 0014). We log the
+        # chosen verb + one-line plan + the size of the (already PHI-redacted)
+        # input that produced it — enough to reconstruct an injection attempt
+        # without writing raw PHI to logs (ADR 0008).
+        _logger.info(
+            "planner.decision",
+            extra={
+                "run_id": run_id,
+                "step_no": step_no,
+                "verb": verb,
+                "ready_to_submit": bool(plan.get("ready_to_submit")),
+                "input_chars": sum(len(str(m.get("content", ""))) for m in history),
+            },
+        )
+
         t0 = time.perf_counter()
 
         try:
             if verb == "EXECUTE":
                 tool_output = await execute.parse_prescription(pdf_bytes)
                 parsed = tool_output
+                # Snapshot the identity fields once, from the trusted parse.
+                if frozen_identity is None:
+                    frozen_identity = _identity(parsed)
+
+                # Stop-and-ask: two layers of confidence checking.
+                #
+                # Layer 1 (LLM confidence): the extraction pipeline flags
+                # _needs_review when critical fields have low LLM confidence.
+                # Layer 2 (missing identity): hard check that required fields
+                # are present and non-empty (ticket 0029).
+                #
+                # Either trigger halts the run for human review rather than
+                # filing a wrong-patient PA.
+                review_reasons: list[str] = []
+
+                # LLM confidence check
+                if parsed.get("_needs_review"):
+                    review_reasons.extend(parsed.get("_review_reasons", []))
+
+                # Hard missing-field check
+                missing = _missing_identity(parsed)
+                if missing:
+                    review_reasons.extend(
+                        f"Required field '{f}' is missing" for f in missing
+                    )
+
+                if review_reasons:
+                    elapsed = int((time.perf_counter() - t0) * 1000)
+                    ev = await append_event(
+                        pool, run_id, step_no, verb, plan["plan"], args,
+                        {
+                            "needs_review": True,
+                            "missing_fields": missing,
+                            "review_reasons": review_reasons,
+                        },
+                        elapsed,
+                    )
+                    await on_event(ev)
+                    await update_status(pool=pool, pa_id=run_id, status="needs_review")
+                    _logger.warning(
+                        "run.needs_review",
+                        extra={
+                            "run_id": run_id,
+                            "reasons": review_reasons,
+                        },
+                    )
+                    return
             elif verb == "READ-WEB":
                 # Resolve the patient's actual plan from the parsed member_id
                 # so we look up the right payer's rules (Ozempic on
@@ -155,35 +225,100 @@ async def run_agent(
         )
         await on_event(ev)
 
-        # Feed the result back into the planner.
+        # Feed the result back into the planner. PHI is redacted here (ADR
+        # 0008): the planner reasons over masked identifiers — it never needs
+        # the raw member_id / patient_name / SSN to pick the next verb. The
+        # raw values stay in `parsed` (server-side only) for the actual form
+        # submission. `_safe_for_history` also strips free text that could
+        # carry a prompt-injection payload (ticket 0014).
         history.append({"role": "assistant", "content": str(plan)})
         history.append({
             "role": "tool",
-            "content": f"{verb} result: {tool_output}",
+            "content": (
+                f"{verb} result: "
+                f"<tool_output verb=\"{verb}\">{_safe_for_history(tool_output)}</tool_output>"
+            ),
         })
 
         # Stop conditions: planner says we're ready to submit.
         if plan.get("ready_to_submit"):
             break
 
-    # ─── ACTION: Rtrvr files the form ────────────────────────────────
+    # ─── Guardrail: identity must be unchanged since EXECUTE ─────────
+    # Compare-and-fail (ticket 0014): the final SUBMIT must never proceed if
+    # the drug NDC, diagnosis code, or member id drifted from what the trusted
+    # PDF parse produced — e.g. coerced by adversarial READ-WEB portal content.
+    if frozen_identity is not None and _identity(parsed) != frozen_identity:
+        ev = await append_event(
+            pool, run_id, last_step_no + 1, "ACTION",
+            "Aborted submission — parsed identity fields changed after EXECUTE.",
+            {"reason": "identity_drift"},
+            {"error": "identity drift detected; refusing to submit"},
+            0,
+        )
+        await on_event(ev)
+        await update_status(pool=pool, pa_id=run_id, status="error")
+        return
+
+    # ─── ACTION: Submit PA via the payer adapter ──────────────────────
     t0 = time.perf_counter()
-    receipt_url = await read_web.submit_pa_form(
-        pool=pool, pa_id=run_id,
+    payer_result = await submit_to_payer(
+        pool=pool,
+        pa_id=run_id,
         parsed=parsed,
-        coverage_rule=coverage_rule,
         rationale=rationale or "",
     )
     elapsed = int((time.perf_counter() - t0) * 1000)
+
+    receipt_url = payer_result.get("receipt_url")
     ev = await append_event(
         pool, run_id, last_step_no + 1, "ACTION",
-        "Submit the completed PA form to the payer portal and capture the receipt URL.",
+        "Submit the completed PA to the payer via the configured adapter.",
         {"payer": coverage_rule.get("payer") if coverage_rule else "UHC"},
-        {"receipt_url": receipt_url},
+        payer_result,
         elapsed,
     )
     await on_event(ev)
-    await update_status(pool=pool, pa_id=run_id, status="submitted", receipt_url=receipt_url)
+
+    if payer_result.get("submitted_to_payer"):
+        await update_status(
+            pool=pool, pa_id=run_id, status="submitted", receipt_url=receipt_url,
+        )
+    else:
+        await update_status(pool=pool, pa_id=run_id, status="error")
+
+
+#: Patient/clinical facts that come ONLY from the trusted PDF parse and must
+#: never be mutated by downstream (adversarial) tool output (ticket 0014).
+_IDENTITY_FIELDS = ("member_id", "drug_ndc", "icd10")
+
+
+def _identity(parsed: dict) -> dict:
+    """The frozen-from-EXECUTE identity fields, for compare-and-fail."""
+    return {k: parsed.get(k) for k in _IDENTITY_FIELDS}
+
+
+#: Fields that MUST be present after extraction for a run to proceed. Missing
+#: any of these means we can't trust who/what we'd be filing for (ticket 0029).
+_REQUIRED_FOR_SUBMIT = ("member_id", "drug_name")
+
+
+def _missing_identity(parsed: dict) -> list[str]:
+    """Return the required identity fields that extraction failed to produce."""
+    return [k for k in _REQUIRED_FOR_SUBMIT if not str(parsed.get(k) or "").strip()]
+
+
+def _safe_for_history(tool_output) -> dict | str:
+    """Redact PHI before a tool result re-enters the planner's chat history.
+
+    The planner runs on a third-party LLM (OpenRouter). Per ADR 0008, raw
+    PHI must not leave our trust boundary beyond what is strictly required —
+    and the planner's job (pick the next verb) never requires raw
+    identifiers. Returns the input unchanged if it isn't a dict.
+    """
+    if isinstance(tool_output, dict):
+        return redact_phi(tool_output)
+    return tool_output
 
 
 def _build_packet(parsed: dict, rationale: str | None) -> dict:

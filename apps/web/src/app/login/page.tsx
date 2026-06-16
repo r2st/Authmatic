@@ -5,15 +5,19 @@ import { useAuth } from "@/components/AuthProvider";
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState("ma@bayarea-care.com");
-  const [password, setPassword] = useState("demo123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!login(email, password)) {
-      setError("Invalid email or password. Use demo123 for clinic accounts.");
+    setPending(true);
+    const ok = await login(email, password);
+    setPending(false);
+    if (!ok) {
+      setError("Invalid email or password.");
     }
   }
 
@@ -65,17 +69,12 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            className="w-full rounded-lg bg-[#0f1419] py-3 text-sm font-semibold text-white hover:bg-[#b8410e]"
+            disabled={pending}
+            className="w-full rounded-lg bg-[#0f1419] py-3 text-sm font-semibold text-white hover:bg-[#b8410e] disabled:opacity-60"
           >
-            Sign in
+            {pending ? "Signing in…" : "Sign in"}
           </button>
         </form>
-
-        <div className="mt-6 rounded-lg border border-[#e6f1ea] bg-[#e6f1ea] px-4 py-3 text-xs text-[#1f6b3e]">
-          <p className="font-semibold">Demo accounts</p>
-          <p className="mt-1">ma@bayarea-care.com / demo123 (Medical assistant)</p>
-          <p>emily.chen@bayarea-care.com / demo123 (Provider)</p>
-        </div>
       </div>
     </div>
   );

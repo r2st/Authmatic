@@ -60,3 +60,9 @@ build/
 .roo
 .trae
 .windsurf
+
+# Security scan artifacts + reports (ticket: Opsera pre-commit gate)
+*-report.json
+*-stderr.txt
+npm-audit.json
+security-reports/

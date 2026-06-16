@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adjudicateReference } from "@/lib/adjudication";
-import { getSubmission } from "@/lib/submissions";
+import { getSubmission, InvalidSubmissionPatchError } from "@/lib/submissions";
 
 /**
  * Simulates HealthFirst medical review — NOT auto-called on submit.
  * Agent backend calls this after form submission to run payer adjudication.
+ *
+ * PUBLIC by design — this is the simulated *payer's* review action, keyed
+ * by the unguessable reference id (ticket 0007), not a clinic session. The
+ * field-level allowlist for what this may mutate is tightened in ticket
+ * 0018 (it must not accept an arbitrary patch). Rate-limited via 0012.
  */
 export async function POST(
   request: NextRequest,
@@ -32,7 +37,15 @@ export async function POST(
   const reviewDelayMs =
     typeof body.review_delay_ms === "number" ? body.review_delay_ms : 8000;
 
-  const result = await adjudicateReference(ref, reviewDelayMs);
+  let result;
+  try {
+    result = await adjudicateReference(ref, reviewDelayMs);
+  } catch (err) {
+    if (err instanceof InvalidSubmissionPatchError) {
+      return NextResponse.json({ error: err.message }, { status: 422 });
+    }
+    throw err;
+  }
 
   if (!result) {
     return NextResponse.json({ error: "Adjudication failed" }, { status: 500 });

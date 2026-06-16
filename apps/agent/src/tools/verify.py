@@ -122,8 +122,9 @@ async def _record_scan(pool: asyncpg.Pool, pa_id: str, result: dict) -> None:
         await conn.execute(
             """
             INSERT INTO compliance_scans
-              (pa_id, passed, flagged_fields, raw_response)
-            VALUES ($1, $2, $3, $4)
+              (pa_id, passed, flagged_fields, raw_response, clinic_id)
+            VALUES ($1, $2, $3, $4,
+                    (SELECT clinic_id FROM prior_auths WHERE id = $1))
             """,
             pa_id,
             result["passed"],
