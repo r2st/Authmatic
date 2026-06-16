@@ -44,8 +44,8 @@ async def fetch_coverage_rule(drug_ndc: str, plan_id: str) -> dict:
         return _lookup_coverage_rule(drug_ndc, plan_id)
 
     task = (
-        "Log into the UHC provider portal and find the prior-auth "
-        f"criteria for drug NDC {drug_ndc} under plan {plan_id}. "
+        f"Open the prior-auth portal at {s.pa_portal_url} and find the "
+        f"prior-auth criteria for drug NDC {drug_ndc} under plan {plan_id}. "
         "Return JSON: {payer, covered, requires_pa, criteria_text}."
     )
     return await _agent_call(task, schema={
@@ -83,7 +83,7 @@ async def submit_pa_form(
         )
 
     task = (
-        "Open the UHC prior-authorization form. Fill in: "
+        f"Open the prior-authorization form at {s.pa_portal_url}. Fill in: "
         f"patient={row['full_name']}, dob={row['dob']}, "
         f"member_id={row['member_id']}, drug={parsed.get('drug_name')}, "
         f"dose={parsed.get('dose')}, diagnosis={parsed.get('icd10')}, "

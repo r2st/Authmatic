@@ -84,6 +84,7 @@ migrate` before starting the app (see ADR 0006 + ticket 0009).
 
 ## Documentation
 
+- [docs/production-readiness.md](docs/production-readiness.md) — **go-live checklist**: every remaining ops/legal/code item to ship to prod
 - [docs/architecture.md](docs/architecture.md) — system design narrative
 - [docs/architecture-overview.md](docs/architecture-overview.md) — ASCII diagram + flow
 - [docs/spec.md](docs/spec.md) — agent loop spec

@@ -29,6 +29,29 @@ _FALLBACK_PATIENT = {
 }
 
 
+# Default clinic for runs without an explicit clinic (the 0006 backfill clinic).
+# clinic_id is NOT NULL + FK to clinics(id) after migration 0007.
+_DEFAULT_CLINIC = "00000000-0000-0000-0000-000000000001"
+
+
+def coerce_clinic_id(clinic_id: str) -> str:
+    """Coerce the clinic_id to a valid clinics(id) UUID. Non-UUID sentinels
+    (e.g. the 'unknown' default, or a demo clinic slug) map to the backfill
+    clinic so the NOT NULL + FK + UUID-column constraints (migrations 0007/
+    0009) are satisfied everywhere — create_run AND queue.enqueue."""
+    from uuid import UUID
+
+    try:
+        UUID(clinic_id)
+        return clinic_id
+    except (ValueError, TypeError):
+        return _DEFAULT_CLINIC
+
+
+# Backwards-compatible internal alias.
+_clinic_uuid = coerce_clinic_id
+
+
 async def create_run(
     pool: asyncpg.Pool, pdf_bytes: bytes, filename: str, clinic_id: str = "unknown"
 ) -> str:
@@ -39,6 +62,7 @@ async def create_run(
     The storage key derives uniqueness from clinic_id + run_id, never from the
     untrusted upload filename (ticket 0013).
     """
+    clinic = _clinic_uuid(clinic_id)
     async with pool.acquire() as conn:
         async with conn.transaction():
             # Always default to the canonical Jane Doe fallback. The agent's
@@ -51,23 +75,25 @@ async def create_run(
             if patient_id is None:
                 patient_id = await conn.fetchval(
                     """
-                    INSERT INTO patients (full_name, dob, plan_id, member_id)
-                    VALUES ($1, $2, $3, $4) RETURNING id
+                    INSERT INTO patients (full_name, dob, plan_id, member_id, clinic_id)
+                    VALUES ($1, $2, $3, $4, $5) RETURNING id
                     """,
                     _FALLBACK_PATIENT["full_name"],
                     _FALLBACK_PATIENT["dob"],
                     _FALLBACK_PATIENT["plan_id"],
                     _FALLBACK_PATIENT["member_id"],
+                    clinic,
                 )
 
             run_id = await conn.fetchval(
                 """
                 INSERT INTO prior_auths
-                  (patient_id, drug_name, status)
-                VALUES ($1, '<pending>', 'pending')
+                  (patient_id, drug_name, status, clinic_id)
+                VALUES ($1, '<pending>', 'pending', $2)
                 RETURNING id
                 """,
                 patient_id,
+                clinic,
             )
 
             # Safe storage key — uniqueness from clinic_id + run_id, with the
@@ -94,11 +120,13 @@ async def append_event(
 ) -> dict:
     """Insert one agent_events row, return it shaped for SSE."""
     async with pool.acquire() as conn:
+        # clinic_id is NOT NULL (migration 0007); inherit it from the parent run.
         await conn.execute(
             """
             INSERT INTO agent_events
-              (pa_id, step_no, verb, plan, tool_input, tool_output, duration_ms)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+              (pa_id, step_no, verb, plan, tool_input, tool_output, duration_ms, clinic_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7,
+                    (SELECT clinic_id FROM prior_auths WHERE id = $1))
             """,
             pa_id, step_no, verb, plan, tool_input, tool_output, duration_ms,
         )

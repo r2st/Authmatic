@@ -24,6 +24,7 @@ from src import queue
 from src.auth import require_service_token
 from src.logging import setup_logging
 from src.persist import (
+    coerce_clinic_id,
     create_run,
     fetch_run_detail,
     fetch_run_status,
@@ -105,16 +106,16 @@ async def post_run(
     # sanitized storage key. The client content_type header is advisory only;
     # read_pdf_upload confirms the real bytes.
     pdf_bytes = await read_pdf_upload(pdf, request.headers.get("content-length"))
-    run_id = await create_run(
-        app.state.pool, pdf_bytes, pdf.filename or "rx.pdf", clinic_id=clinic_id
-    )
+    # Coerce once so BOTH the run row and the queue job get a valid clinics(id)
+    # UUID (the jobs.clinic_id column is UUID; a demo slug would 500 the insert).
+    clinic = coerce_clinic_id(clinic_id)
+    filename = pdf.filename or "rx.pdf"
+    run_id = await create_run(app.state.pool, pdf_bytes, filename, clinic_id=clinic)
 
     # Durable queue (ticket 0027): enqueue and return immediately. A separate
     # worker process (src/worker.py) runs the agent to completion — no
     # post-response `create_task` that a frozen instance would drop.
-    await queue.enqueue(
-        app.state.pool, run_id, pdf_bytes, pdf.filename or "rx.pdf", clinic_id=clinic_id
-    )
+    await queue.enqueue(app.state.pool, run_id, pdf_bytes, filename, clinic_id=clinic)
     return {"run_id": run_id, "status": "queued"}
 
 
