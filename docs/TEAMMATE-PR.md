@@ -43,9 +43,6 @@ INSFORGE_* , TIGRIS_*
 
 ## Architecture note
 
-This fork uses an **in-process Next.js agent** (`agent-orchestrator.ts`) instead of FastAPI. After merge, either:
-
-- Keep both (web proxies to agent in prod), or
-- Port batch + demo cases into `apps/agent` Python loop
+The canonical agent is the Python ReAct loop in `apps/agent/`. The web app proxies to it via `agent-proxy.ts`. The old in-process `agent-orchestrator.ts` has been deleted.
 
 The portal form and demo cases are portable to either stack.

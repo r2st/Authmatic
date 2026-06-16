@@ -32,7 +32,7 @@ Click **Run demo** on `/` → full flow completes today:
 
 | File | Role |
 |------|------|
-| `apps/web/src/lib/agent-orchestrator.ts` | 5-step pipeline — **this is your contract to match** |
+| `apps/agent/` (Python ReAct loop) | 5-step pipeline — proxied via `apps/web/src/lib/agent-proxy.ts` |
 | `apps/web/src/lib/agent-runs.ts` | In-memory run + step state |
 | `apps/web/src/app/api/stream/[id]/route.ts` | SSE stream to UI |
 | `apps/web/src/app/api/run/route.ts` | `POST /api/run` → `run_id` |
@@ -98,7 +98,7 @@ Adjudication rules: `apps/web/src/lib/adjudication.ts`
 
 ### Step 0 — Read these files first (30 min)
 
-1. `apps/web/src/lib/agent-orchestrator.ts` — **match this step shape**
+1. `apps/agent/` (Python ReAct loop) — **match this step shape** (old `agent-orchestrator.ts` deleted; see `agent-proxy.ts` for the web proxy)
 2. `apps/web/src/lib/agent-runs.ts` — run/step types
 3. `docs/healthfirst-portal-handoff.md` — portal URLs + API
 4. `fixtures/healthfirst-portal.json` — Rtrvr selectors
@@ -346,7 +346,7 @@ Either way: **keep `/run/[id]` and portal routes unchanged.**
 | `/run/[id]` audit page | SSE consumer done |
 | Adjudication / approval rules | Done in `adjudication.ts` |
 | Sarah demo data + PDFs | Done in `mock/` + `assets/demo/` |
-| Full agent loop skeleton | Done in `agent-orchestrator.ts` — **swap steps, don't rewrite from scratch** |
+| Full agent loop skeleton | Done in `apps/agent/` (Python ReAct loop); web proxies via `agent-proxy.ts` |
 
 ---
 

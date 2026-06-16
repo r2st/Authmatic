@@ -7,12 +7,16 @@
  * and is not exported from this file.
  */
 
-export type PaStatus =
-  | "pending_review"
-  | "under_review"
-  | "approved"
-  | "denied"
-  | "needs_info";
+export const PA_STATUSES = [
+  "pending_review",
+  "under_review",
+  "needs_info",
+  "approved",
+  "denied",
+  "submitted", // legacy agent-path value
+] as const;
+
+export type PaStatus = (typeof PA_STATUSES)[number];
 
 export interface PaFormPayload {
   patient_name: string;
@@ -92,4 +96,5 @@ export const STATUS_LABELS: Record<PaStatus, string> = {
   approved: "Approved",
   denied: "Denied",
   needs_info: "Additional Information Required",
+  submitted: "Submitted",
 };

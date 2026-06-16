@@ -28,6 +28,14 @@ services:
         sync: false
       - key: TIGRIS_BUCKET
         sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: AGENT_SERVICE_TOKEN
+        sync: false
+      - key: APP_DATABASE_URL
+        sync: false
+      - key: ADMIN_DATABASE_URL
+        sync: false
 
   - type: pserv
     name: authmatic-agent
@@ -35,6 +43,28 @@ services:
     dockerfilePath: ./apps/agent/Dockerfile
     dockerContext: .
     healthCheckPath: /readyz
+    autoDeploy: false
+    envVars:
+      - key: AUTHMATIC_ENV
+        value: production
+      - key: INSFORGE_DB_URL
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: DAYTONA_API_KEY
+        sync: false
+      - key: RTRVR_API_KEY
+        sync: false
+      - key: OPSERA_TOKEN
+        sync: false
+      - key: AGENT_SERVICE_TOKEN
+        sync: false
+
+  - type: worker
+    name: authmatic-worker
+    runtime: docker
+    dockerfilePath: ./apps/agent/Dockerfile
+    dockerContext: .
     autoDeploy: false
     envVars:
       - key: AUTHMATIC_ENV

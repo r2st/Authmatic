@@ -12,9 +12,9 @@ The repo shipped two agent implementations:
    (`plan_next_step`), the 4 verbs (READ-WEB / EXECUTE / VERIFY /
    PERSIST), and structured output. This is what the README,
    `docs/architecture.md`, and the pitch describe.
-2. `apps/web/src/lib/agent-orchestrator.ts` — a scripted TypeScript
+2. ~~`apps/web/src/lib/agent-orchestrator.ts`~~ (deleted) — was a scripted TypeScript
    pipeline with hardcoded `sleep()` pacing and a fixed 5-step sequence.
-   **No LLM planner** — it is demo theater.
+   **No LLM planner** — it was demo theater.
 
 The live `/api/run` and `/api/stream` routes ran the **scripted TS
 pipeline**, not the real agent. The Python service was effectively dead
@@ -29,9 +29,8 @@ agent that acts"), and the planner already exists.
 - `/api/run` and `/api/stream` will route to the Python agent (via the
   existing `next.config.ts` rewrite `/api/agent/:path*` → `AGENT_BASE_URL`,
   or a server-side proxy).
-- `agent-orchestrator.ts` is **demo-only**, gated behind
-  `DEMO_FIXTURE_MODE`, and slated for deletion once the proxy path is
-  proven. It must not gain new features.
+- `agent-orchestrator.ts` has been **deleted**. The proxy path via
+  `agent-proxy.ts` is proven and all traffic routes to the Python agent.
 - README + `docs/architecture.md` already describe the Python agent;
   they become accurate once the swap lands.
 
