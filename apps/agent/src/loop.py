@@ -26,6 +26,7 @@ from .persist import (
 )
 from .phi import redact_phi
 from .tools import execute, read_web, verify
+from .tools.persist import submit_to_payer
 
 MAX_ITERATIONS = 5
 
@@ -97,22 +98,48 @@ async def run_agent(
                 # Snapshot the identity fields once, from the trusted parse.
                 if frozen_identity is None:
                     frozen_identity = _identity(parsed)
-                # Stop-and-ask, never proceed with placeholder identity
-                # (ticket 0029). If extraction can't confidently identify the
-                # patient + drug from the REAL document, the run halts for human
-                # review rather than filing a wrong-patient PA.
+
+                # Stop-and-ask: two layers of confidence checking.
+                #
+                # Layer 1 (LLM confidence): the extraction pipeline flags
+                # _needs_review when critical fields have low LLM confidence.
+                # Layer 2 (missing identity): hard check that required fields
+                # are present and non-empty (ticket 0029).
+                #
+                # Either trigger halts the run for human review rather than
+                # filing a wrong-patient PA.
+                review_reasons: list[str] = []
+
+                # LLM confidence check
+                if parsed.get("_needs_review"):
+                    review_reasons.extend(parsed.get("_review_reasons", []))
+
+                # Hard missing-field check
                 missing = _missing_identity(parsed)
                 if missing:
+                    review_reasons.extend(
+                        f"Required field '{f}' is missing" for f in missing
+                    )
+
+                if review_reasons:
                     elapsed = int((time.perf_counter() - t0) * 1000)
                     ev = await append_event(
                         pool, run_id, step_no, verb, plan["plan"], args,
-                        {"needs_review": True, "missing_fields": missing}, elapsed,
+                        {
+                            "needs_review": True,
+                            "missing_fields": missing,
+                            "review_reasons": review_reasons,
+                        },
+                        elapsed,
                     )
                     await on_event(ev)
-                    await update_status(pool=pool, pa_id=run_id, status="error")
+                    await update_status(pool=pool, pa_id=run_id, status="needs_review")
                     _logger.warning(
                         "run.needs_review",
-                        extra={"run_id": run_id, "missing": ",".join(missing)},
+                        extra={
+                            "run_id": run_id,
+                            "reasons": review_reasons,
+                        },
                     )
                     return
             elif verb == "READ-WEB":
@@ -233,24 +260,32 @@ async def run_agent(
         await update_status(pool=pool, pa_id=run_id, status="error")
         return
 
-    # ─── ACTION: Rtrvr files the form ────────────────────────────────
+    # ─── ACTION: Submit PA via the payer adapter ──────────────────────
     t0 = time.perf_counter()
-    receipt_url = await read_web.submit_pa_form(
-        pool=pool, pa_id=run_id,
+    payer_result = await submit_to_payer(
+        pool=pool,
+        pa_id=run_id,
         parsed=parsed,
-        coverage_rule=coverage_rule,
         rationale=rationale or "",
     )
     elapsed = int((time.perf_counter() - t0) * 1000)
+
+    receipt_url = payer_result.get("receipt_url")
     ev = await append_event(
         pool, run_id, last_step_no + 1, "ACTION",
-        "Submit the completed PA form to the payer portal and capture the receipt URL.",
+        "Submit the completed PA to the payer via the configured adapter.",
         {"payer": coverage_rule.get("payer") if coverage_rule else "UHC"},
-        {"receipt_url": receipt_url},
+        payer_result,
         elapsed,
     )
     await on_event(ev)
-    await update_status(pool=pool, pa_id=run_id, status="submitted", receipt_url=receipt_url)
+
+    if payer_result.get("submitted_to_payer"):
+        await update_status(
+            pool=pool, pa_id=run_id, status="submitted", receipt_url=receipt_url,
+        )
+    else:
+        await update_status(pool=pool, pa_id=run_id, status="error")
 
 
 #: Patient/clinical facts that come ONLY from the trusted PDF parse and must

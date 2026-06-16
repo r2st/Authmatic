@@ -38,10 +38,25 @@ class Settings(BaseSettings):
     opsera_mcp_url: str = "https://mcp.opsera.io/mcp"
     opsera_token: str = ""
 
+    # ── Payer integration ──
+    # When true, the MockPayerAdapter is used regardless of other config.
+    # Automatically true when demo_fixture_mode is on.
+    mock_payer: bool = True
+    # CoverMyMeds credentials (the dominant ePA network).
+    covermymeds_api_key: str = ""
+    covermymeds_api_base: str = "https://api.covermymeds.com"
+
     # Where the user's browser hits this app — used to build the receipt
     # URL that the payer-portal step returns. In real production this would
     # be the payer's confirmation URL, not ours.
     web_base_url: str = "http://localhost:3000"
+
+    # The prior-auth portal the agent drives when NOT in fixture mode. Defaults
+    # to OUR OWN mock portal — it must NEVER default to a real payer. Targeting
+    # a real/sandbox payer requires explicitly setting PA_PORTAL_URL to a
+    # sanctioned URL (tickets 0025/0031). This prevents a stray
+    # DEMO_FIXTURE_MODE=false from firing the agent at a production payer.
+    pa_portal_url: str = "http://localhost:3000/portal/healthfirst/prior-auth"
 
     # Environment (ticket 0019): development | staging | production.
     authmatic_env: str = "development"
